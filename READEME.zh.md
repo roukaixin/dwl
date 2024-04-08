@@ -10,7 +10,7 @@
 sudo pacman -S libinput wayland wlroots wayland-protocols pkg-config
 ```
 
-## 编译安装 `dwl`
+## 构建 `dwl`
 
 ```shell
 sudo make install
