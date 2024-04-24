@@ -69,7 +69,7 @@
 #endif
 
 #include "util.h"
-#include "utf8.h"
+#include "drwl.h"
 
 /* macros */
 #define MAX(A, B)               ((A) > (B) ? (A) : (B))
@@ -82,7 +82,7 @@
 #define TAGMASK                 ((1u << LENGTH(tags)) - 1)
 #define LISTEN(E, L, H)         wl_signal_add((E), ((L)->notify = (H), (L)))
 #define LISTEN_STATIC(E, H)     do { static struct wl_listener _l = {.notify = (H)}; wl_signal_add((E), &_l); } while (0)
-#define TEXTW(text)             (draw_text(NULL, 0, 0, 0, 0, 0, text, NULL) + lrpad)
+#define TEXTW(text) (drwl_text(NULL, font, 0, 0, 0, 0, 0, text, NULL, NULL) + lrpad)
 
 /* enums */
 enum { CurNormal, CurPressed, CurMove, CurResize }; /* cursor */
@@ -304,8 +304,6 @@ static void destroysessionmgr(struct wl_listener *listener, void *data);
 static Monitor *dirtomon(enum wlr_direction dir);
 static void drawbar(Monitor *m);
 static void drawbars(void);
-static uint32_t draw_text(pixman_image_t *pix, int x, int y, unsigned int w, unsigned int h,
-		unsigned int lpad, const char *text, pixman_color_t *clr);
 static void focusclient(Client *c, int lift);
 static void focusmon(const Arg *arg);
 static void focusstack(const Arg *arg);
@@ -1360,65 +1358,6 @@ dirtomon(enum wlr_direction dir)
 	return selmon;
 }
 
-static uint32_t
-draw_text(pixman_image_t *pix, int x, int y, unsigned int w, unsigned int h,
-		unsigned int lpad, const char *text, pixman_color_t *clr)
-{
-	int ty;
-	int render = x || y || w || h;
-	long x_kern;
-	uint32_t cp, last_cp = 0;
-	uint32_t state = UTF8_ACCEPT;
-	pixman_image_t *clr_pix = NULL;
-	const struct fcft_glyph *glyph;
-
-	if ((render && (!clr || !w)) || !text || !font)
-		return 0;
-
-	if (!render) {
-		w = -1;
-	} else {
-		clr_pix = pixman_image_create_solid_fill(clr);
-
-		x += lpad;
-		w -= lpad;
-	}
-
-	for (const char *p = text; *p; p++) {
-		if (utf8decode(&state, &cp, *p))
-			continue;
-
-		glyph = fcft_rasterize_char_utf32(font, cp, FCFT_SUBPIXEL_NONE);
-		if (!glyph)
-			continue;
-
-		x_kern = 0;
-		if (last_cp)
-			fcft_kerning(font, last_cp, cp, &x_kern, NULL);
-		last_cp = cp;
-
-		if ((x_kern + glyph->advance.x) > w)
-			break;
-
-		x += x_kern;
-
-		if (render) {
-			ty = y + (h - font->height) / 2 + font->ascent;
-			pixman_image_composite32(
-				PIXMAN_OP_OVER, clr_pix, glyph->pix, pix, 0, 0, 0, 0,
-				x + glyph->x, ty - glyph->y, glyph->width, glyph->height);
-		}
-
-		x += glyph->advance.x;
-		w -= glyph->advance.x;
-	}
-
-	if (render)
-		pixman_image_unref(clr_pix);
-
-	return x + (render ? w : 0);
-}
-
 static void
 draw_rect(pixman_image_t *pix,
           int16_t x, int16_t y, uint16_t w, uint16_t h,
@@ -1451,7 +1390,6 @@ drawbar(Monitor *mon)
 	int boxw = font->height / 6 + 2;
 	uint32_t i, occ = 0, urg = 0;
 	uint32_t stride, size;
-	const char *title;
 	pixman_image_t *pix;
 	Client *c;
 	Buffer *buf;
@@ -1473,10 +1411,10 @@ drawbar(Monitor *mon)
 	if (mon == selmon) {
 		if (stext[0] == '\0')
 			strncpy(stext, "dwl-"VERSION, sizeof(stext));
-		draw_rect(pix, 0, 0, mon->b.width, mon->b.height, 1, &normbarbg);
         // status 宽度
-		tw = TEXTW(stext) - lrpad + 2;
-		draw_text(pix, mon->b.width - tw, 0, tw, mon->b.height, 0, stext, &normbarfg);
+        tw = TEXTW(stext) - lrpad + 2;
+        drwl_text(pix, font, mon->b.width - tw, 0, tw, mon->b.height, 0,
+                  stext, &normbarfg, &normbarbg);
 	}
 
 	wl_list_for_each(c, &clients, link) {
@@ -1492,10 +1430,9 @@ drawbar(Monitor *mon)
 		w = TEXTW(tags[i]);
 		sel = mon->tagset[mon->seltags] & 1 << i;
 
-		draw_rect(pix, x, 0, w, mon->b.height, 1,
-			urg & 1 << i ? &selbarfg : (sel ? &selbarbg : &normbarbg));
-		draw_text(pix, x, 0, w, mon->b.height, lrpad / 2, tags[i],
-			urg & 1 << i ? &selbarbg : (sel ? &selbarfg : &normbarfg));
+        drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2, tags[i],
+                  urg & 1 << i ? &selbarbg : (sel ? &selbarfg : &normbarfg),
+                  urg & 1 << i ? &selbarfg : (sel ? &selbarbg : &normbarbg));
 
 		if (occ & 1 << i)
 			draw_rect(pix, x + boxs, boxs, boxw, boxw,
@@ -1503,19 +1440,23 @@ drawbar(Monitor *mon)
 
 		x += w;
 	}
+
 	w = TEXTW(mon->ltsymbol);
-	draw_rect(pix, x, 0, w, mon->b.height, 1, &normbarbg);
-	x = draw_text(pix, x, 0, w, mon->b.height, lrpad / 2, mon->ltsymbol, &normbarfg);
+    x = drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2,
+                  mon->ltsymbol, &normbarfg, &normbarbg);
 
 	if ((w = mon->b.width - tw - x) > mon->b.height) {
-		title = c ? client_get_title(c) : NULL;
-		draw_rect(pix, x, 0, w, mon->b.height, 1,
-			(mon == selmon && title) ? &selbarbg : &normbarbg);
-		draw_text(pix, x, 0, w, mon->b.height, lrpad / 2, title,
-			mon == selmon ? &selbarfg : &normbarfg);
-		if (c && c->isfloating)
-			draw_rect(pix, x + boxs, boxs, boxw, boxw, 0,
-				mon == selmon ? &selbarfg : &normbarfg);
+        if (c != NULL) {
+            drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2,
+                      c ? client_get_title(c) : NULL,
+                      mon == selmon ? &selbarfg : &normbarfg,
+                      (mon == selmon && c) ? &selbarbg : &normbarbg);
+            if (c && c->isfloating)
+                drwl_rect(pix, x + boxs, boxs, boxw, boxw, 0,
+                          mon == selmon ? &selbarfg : &normbarfg);
+        } else {
+            drwl_rect(pix, x, 0, w, mon->b.height, 1, &normbarbg);
+        }
 	}
 
 	pixman_image_unref(pix);
@@ -2520,12 +2461,12 @@ setsel(struct wl_listener *listener, void *data)
 void
 setup(void)
 {
-	struct xkb_context *context;
-	struct xkb_keymap *keymap;
+    struct xkb_context *context;
+    struct xkb_keymap *keymap;
 
-    int i, sig[] = {SIGCHLD, SIGINT, SIGTERM};
-	struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
-	sigemptyset(&sa.sa_mask);
+    int i, sig[] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
+    struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
+    sigemptyset(&sa.sa_mask);
 
 	for (i = 0; i < (int)LENGTH(sig); i++)
 		sigaction(sig[i], &sa, NULL);
@@ -3105,7 +3046,7 @@ void
 updatebardims(Monitor *m)
 {
 	int rw, rh;
-	wlr_output_transformed_resolution(m->wlr_output, &rw, &rh);
+    wlr_output_transformed_resolution(m->wlr_output, &rw, &rh);
 	m->b.width = rw;
 	m->b.height = bh;
 }
