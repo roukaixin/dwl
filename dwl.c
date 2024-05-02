@@ -803,9 +803,9 @@ buttonpress(struct wl_listener *listener, void *data) {
     if (c)
         click = ClkClient;
 
-    if (
-            (node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
-            (buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer
+    if (!c &&
+        (node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
+        (buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer
             ) {
         x = selmon->m.x;
         do
@@ -1507,7 +1507,8 @@ drawbar(Monitor *mon) {
     /* draw status first so it can be overdrawn by tags later */
     if (mon == selmon) {
         if (stext[0] == '\0')
-            strncpy(stext, "dwl-"VERSION, sizeof(stext));
+            strncpy(stext, "dwl-"
+        VERSION, sizeof(stext));
         // status 宽度
         tw = TEXTW(stext) - lrpad + 2;
         drwl_text(pix, font, mon->b.width - tw, 0, tw, mon->b.height, 0,
