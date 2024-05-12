@@ -4,18 +4,18 @@
 include config.mk
 
 # flags for compiling
-DWLCPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\" $(XWAYLAND)
-DWLDEVCFLAGS = -g -pedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros\
+DWL_CPPFLAGS = -I. -DWLR_USE_UNSTABLE -D_POSIX_C_SOURCE=200809L -DVERSION=\"$(VERSION)\" $(XWAYLAND)
+DWL_DEV_CFLAGS = -g -pedantic -Wall -Wextra -Wdeclaration-after-statement -Wno-unused-parameter -Wshadow -Wunused-macros\
 	-Werror=strict-prototypes -Werror=implicit -Werror=return-type -Werror=incompatible-pointer-types -Wfloat-conversion
 
 # CFLAGS / LDFLAGS
 PKGS      = wlroots wayland-server xkbcommon libinput pixman-1 fcft $(XLIBS)
-DWLCFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWLCPPFLAGS) $(DWLDEVCFLAGS) $(CFLAGS)
+DWL_CFLAGS = `$(PKG_CONFIG) --cflags $(PKGS)` $(DWL_CPPFLAGS) $(DWL_DEV_CFLAGS) $(CFLAGS)
 LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
 all: dwl
 dwl: dwl.o util.o
-	$(CC) dwl.o util.o $(LDLIBS) $(LDFLAGS) $(DWLCFLAGS) -o $@
+	$(CC) dwl.o util.o $(LDLIBS) $(LDFLAGS) $(DWL_CFLAGS) -o $@
 dwl.o: dwl.c config.mk config.h client.h cursor-shape-v1-protocol.h pointer-constraints-unstable-v1-protocol.h wlr-layer-shell-unstable-v1-protocol.h xdg-shell-protocol.h
 util.o: util.c util.h
 
@@ -67,4 +67,4 @@ uninstall:
 
 .SUFFIXES: .c .o
 .c.o:
-	$(CC) $(CPPFLAGS) $(DWLCFLAGS) -c $<
+	$(CC) $(CPPFLAGS) $(DWL_CFLAGS) -c $<
