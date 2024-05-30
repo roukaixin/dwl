@@ -1571,7 +1571,7 @@ void drawbar(Monitor *mon) {
     if ((w = mon->b.width - tw - x) > mon->b.height) {
         if (c != NULL) {
             drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2,
-                      c ? client_get_title(c) : NULL,
+                      client_get_title(c),
                       mon == selmon ? &selbarfg : &normbarfg,
                       (mon == selmon && c) ? &selbarbg : &normbarbg);
             if (c && c->isfloating)
@@ -2781,7 +2781,7 @@ void setup(void) {
 
     wlr_scene_set_presentation(scene, wlr_presentation_create(dpy, backend));
 
-    fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_DEBUG);
+    fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
     fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
     if (!(font = fcft_from_name(LENGTH(fonts), fonts, fontattrs)))
         die("Could not load font");
@@ -2818,6 +2818,7 @@ void setup(void) {
 
 void spawn(const Arg *arg) {
     if (fork() == 0) {
+        close(STDIN_FILENO);
         dup2(STDERR_FILENO, STDOUT_FILENO);
         setsid();
         execvp(((char **) arg->v)[0], (char **) arg->v);
