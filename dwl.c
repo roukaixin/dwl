@@ -204,6 +204,7 @@ typedef struct {
 
     struct wl_listener modifiers;
     struct wl_listener key;
+    struct wl_listener destroy;
 } KeyboardGroup;
 
 typedef struct {
@@ -242,7 +243,9 @@ struct Monitor {
     struct wl_listener destroy_lock_surface;
     struct wlr_session_lock_surface_v1 *lock_surface;
     struct wlr_box m; /* monitor area, layout-relative */
-    // bar 区域
+    /**
+     * bar 区域
+     */
     struct wlr_box b;           /* bar area */
     struct wlr_box w;           /* window area, layout-relative */
     struct wl_list layers[4]; /* LayerSurface.link */
@@ -342,6 +345,8 @@ static void createidleinhibitor(struct wl_listener *listener, void *data);
 
 static void createkeyboard(struct wlr_keyboard *keyboard);
 
+static KeyboardGroup *createkeyboardgroup(void);
+
 static void createlayersurface(struct wl_listener *listener, void *data);
 
 static void createlocksurface(struct wl_listener *listener, void *data);
@@ -379,6 +384,8 @@ static void destroypointerconstraint(struct wl_listener *listener, void *data);
 static void destroysessionlock(struct wl_listener *listener, void *data);
 
 static void destroysessionmgr(struct wl_listener *listener, void *data);
+
+static void destroykeyboardgroup(struct wl_listener *listener, void *data);
 
 static Monitor *dirtomon(enum wlr_direction dir);
 
@@ -572,8 +579,7 @@ static struct wlr_session_lock_v1 *cur_lock;
 static struct wl_listener lock_listener = {.notify = locksession};
 
 static struct wlr_seat *seat;
-static KeyboardGroup kb_group = {0};
-static KeyboardGroup vkb_group = {0};
+static KeyboardGroup *kb_group;
 static struct wlr_surface *held_grab;
 static unsigned int cursor_mode;
 static Client *grabc;
@@ -582,7 +588,9 @@ static int grabcx, grabcy; /* client-relative */
 static struct wlr_output_layout *output_layout;
 static struct wlr_box sgeom;
 static struct wl_list mons;
-// 当前所在的显示屏
+/**
+ * 当前所在的显示屏
+ */
 static Monitor *selmon;
 
 static struct fcft_font *font;
@@ -686,6 +694,21 @@ void arrange(Monitor *m) {
                                (c = focustop(m)) && c->isfullscreen);
 
     strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
+
+    /* We move all clients (except fullscreen and unmanaged) to LyrTile while
+     * in floating layout to avoid "real" floating clients be always on top */
+    wl_list_for_each(c, &clients, link) {
+        if (c->mon != m || c->isfullscreen)
+            continue;
+
+        wlr_scene_node_reparent(&c->scene->node,
+                                (!m->lt[m->sellt]->arrange && c->isfloating)
+                                ? layers[LyrTile]
+                                : (m->lt[m->sellt]->arrange && c->isfloating)
+                                  ? layers[LyrFloat]
+                                  : c->scene->node.parent);
+    }
+
 
     if (m->lt[m->sellt]->arrange)
         m->lt[m->sellt]->arrange(m);
@@ -924,8 +947,7 @@ void cleanup(void) {
     wlr_output_layout_destroy(output_layout);
 
     /* Remove event source that use the dpy event loop before destroying dpy */
-    wl_event_source_remove(kb_group.key_repeat_source);
-    wl_event_source_remove(vkb_group.key_repeat_source);
+    destroykeyboardgroup(&kb_group->destroy, NULL);
 
     wl_display_destroy(dpy);
     /* Destroy after the wayland display (when the monitors are already
@@ -1045,11 +1067,47 @@ void createidleinhibitor(struct wl_listener *listener, void *data) {
 
 void createkeyboard(struct wlr_keyboard *keyboard) {
     /* Set the keymap to match the group keymap */
-    wlr_keyboard_set_keymap(keyboard, kb_group.wlr_group->keyboard.keymap);
-    wlr_keyboard_set_repeat_info(keyboard, repeat_rate, repeat_delay);
+    wlr_keyboard_set_keymap(keyboard, kb_group->wlr_group->keyboard.keymap);
 
     /* Add the new keyboard to the group */
-    wlr_keyboard_group_add_keyboard(kb_group.wlr_group, keyboard);
+    wlr_keyboard_group_add_keyboard(kb_group->wlr_group, keyboard);
+}
+
+KeyboardGroup *
+createkeyboardgroup(void) {
+    KeyboardGroup *group = ecalloc(1, sizeof(*group));
+    struct xkb_context *context;
+    struct xkb_keymap *keymap;
+
+    group->wlr_group = wlr_keyboard_group_create();
+    group->wlr_group->data = group;
+
+    /* Prepare an XKB keymap and assign it to the keyboard group. */
+    context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    if (!(keymap = xkb_keymap_new_from_names(context, &xkb_rules,
+                                             XKB_KEYMAP_COMPILE_NO_FLAGS)))
+        die("failed to compile keymap");
+
+    wlr_keyboard_set_keymap(&group->wlr_group->keyboard, keymap);
+    xkb_keymap_unref(keymap);
+    xkb_context_unref(context);
+
+    wlr_keyboard_set_repeat_info(&group->wlr_group->keyboard, repeat_rate, repeat_delay);
+
+    /* Set up listeners for keyboard events */
+    LISTEN(&group->wlr_group->keyboard.events.key, &group->key, keypress);
+    LISTEN(&group->wlr_group->keyboard.events.modifiers, &group->modifiers, keypressmod);
+
+    group->key_repeat_source = wl_event_loop_add_timer(
+            wl_display_get_event_loop(dpy), keyrepeat, group);
+
+    /* A seat can only have one keyboard, but this is a limitation of the
+     * Wayland protocol - not wlroots. We assign all connected keyboards to the
+     * same wlr_keyboard_group, which provides a single wlr_keyboard interface for
+     * all of them. Set this combined wlr_keyboard as the seat keyboard.
+     */
+    wlr_seat_set_keyboard(seat, &group->wlr_group->keyboard);
+    return group;
 }
 
 void createlayersurface(struct wl_listener *listener, void *data) {
@@ -1151,7 +1209,8 @@ void createmon(struct wl_listener *listener, void *data) {
             m->mfact = r->mfact;
             m->nmaster = r->nmaster;
             m->lt[0] = r->lt;
-            m->lt[1] = &layouts[LENGTH(layouts) > 1 && r->lt != &layouts[1]];
+            m->lt[1] =
+                    &layouts[LENGTH(layouts) > 1 && r->lt != &layouts[1]];
             strncpy(m->ltsymbol, m->lt[m->sellt]->symbol,
                     LENGTH(m->ltsymbol));
             wlr_output_state_set_scale(&state, r->scale);
@@ -1197,14 +1256,14 @@ void createmon(struct wl_listener *listener, void *data) {
             wlr_scene_rect_create(layers[LyrFS], 0, 0, fullscreen_bg);
     wlr_scene_node_set_enabled(&m->fullscreen_bg->node, 0);
 
-    /* Adds this to the output layout in the order it was configured in.
+    /* Adds this to the output layout in the order it was configured.
      *
      * The output layout utility automatically adds a wl_output global to the
      * display, which Wayland clients can see to find out information about the
      * output (such as DPI, scale factor, manufacturer, etc).
      */
     m->scene_output = wlr_scene_output_create(scene, wlr_output);
-    if (m->m.x < 0 || m->m.y < 0)
+    if (m->m.x == -1 && m->m.y == -1)
         wlr_output_layout_add_auto(output_layout, wlr_output);
     else
         wlr_output_layout_add(output_layout, wlr_output, m->m.x, m->m.y);
@@ -1468,6 +1527,17 @@ void destroysessionmgr(struct wl_listener *listener, void *data) {
     wl_list_remove(&listener->link);
 }
 
+void
+destroykeyboardgroup(struct wl_listener *listener, void *data) {
+    KeyboardGroup *group = wl_container_of(listener, group, destroy);
+    wl_event_source_remove(group->key_repeat_source);
+    wlr_keyboard_group_destroy(group->wlr_group);
+    wl_list_remove(&group->key.link);
+    wl_list_remove(&group->modifiers.link);
+    wl_list_remove(&group->destroy.link);
+    free(group);
+}
+
 Monitor *dirtomon(enum wlr_direction dir) {
     struct wlr_output *next;
     if (!wlr_output_layout_get(output_layout, selmon->wlr_output))
@@ -1503,19 +1573,21 @@ static void draw_rect(pixman_image_t *pix, int16_t x, int16_t y, uint16_t w,
 }
 
 void drawbar(Monitor *mon) {
-    int x, w, tw = 0;
+    int x, w, status_w = 0;
     int sel;
     int boxs = font->height / 9;
     int boxw = font->height / 6 + 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
-    pixman_image_t *pix;
+    pixman_image_t * pix;
     Client *c;
     Buffer *buf;
 
     // 显示屏不存在或者不显示 bar，直接退出
-    if (!mon || !mon->showbar)
+    if (!mon || !mon->showbar) {
         return;
+    }
+
 
     stride = mon->b.width * 4;
     size = stride * mon->b.height;
@@ -1524,19 +1596,18 @@ void drawbar(Monitor *mon) {
     buf->stride = stride;
     wlr_buffer_init(&buf->base, &buffer_impl, mon->b.width, mon->b.height);
 
-    pix = pixman_image_create_bits(PIXMAN_a8r8g8b8, mon->b.width, mon->b.height,
-                                   buf->data, stride);
+    pix = pixman_image_create_bits(PIXMAN_a8r8g8b8, mon->b.width, mon->b.height, buf->data, stride);
 
     /* draw status first so it can be overdrawn by tags later */
-    if (mon == selmon) {
-        if (stext[0] == '\0')
-            strncpy(stext, "dwl-"
-        VERSION, sizeof(stext));
-        // status 宽度
-        tw = TEXTW(stext) - lrpad + 2;
-        drwl_text(pix, font, mon->b.width - tw, 0, tw, mon->b.height, 0, stext,
-                  &normbarfg, &normbarbg);
-    }
+
+    if (stext[0] == '\0')
+        strncpy(stext, "dwl-"
+    VERSION, sizeof(stext));
+    // status 宽度
+    status_w = TEXTW(stext) - lrpad + 2;
+    drwl_text(pix, font, mon->b.width - status_w, 0, status_w, mon->b.height, 0, stext,
+              &normbarfg, &normbarbg);
+
 
     wl_list_for_each(c, &clients, link) {
         if (c->mon != mon)
@@ -1564,10 +1635,9 @@ void drawbar(Monitor *mon) {
     }
 
     w = TEXTW(mon->ltsymbol);
-    x = drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2, mon->ltsymbol,
-                  &normbarfg, &normbarbg);
+    x = drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2, mon->ltsymbol, &normbarfg, &normbarbg);
 
-    if ((w = mon->b.width - tw - x) > mon->b.height) {
+    if ((w = mon->b.width - status_w - x) > mon->b.height) {
         if (c != NULL) {
             drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2,
                       client_get_title(c),
@@ -1595,7 +1665,9 @@ void drawbar(Monitor *mon) {
 void drawbars(void) {
     Monitor *m = NULL;
 
-    wl_list_for_each(m, &mons, link) drawbar(m);
+    wl_list_for_each(m, &mons, link) {
+        drawbar(m);
+    }
 }
 
 void focusclient(Client *c, int lift) {
@@ -1775,7 +1847,7 @@ void inputdevice(struct wl_listener *listener, void *data) {
      * there are no pointer devices, so we always include that capability. */
     /* TODO do we actually require a cursor? */
     caps = WL_SEAT_CAPABILITY_POINTER;
-    if (!wl_list_empty(&kb_group.wlr_group->devices))
+    if (!wl_list_empty(&kb_group->wlr_group->devices))
         caps |= WL_SEAT_CAPABILITY_KEYBOARD;
     wlr_seat_set_capabilities(seat, caps);
 }
@@ -2218,7 +2290,7 @@ void pointerfocus(Client *c, struct wlr_surface *surface, double sx, double sy,
                   uint32_t time) {
     struct timespec now;
 
-    if ((!active_constraint || active_constraint->surface != surface) &&
+    if (surface != seat->pointer_state.focused_surface &&
         sloppyfocus && time && c && !client_is_unmanaged(c))
         focusclient(c, 0);
 
@@ -2420,7 +2492,8 @@ void setcursorshape(struct wl_listener *listener, void *data) {
 void setfloating(Client *c, int floating) {
     Client *p = client_get_parent(c);
     c->isfloating = floating;
-    if (!c->mon)
+    /* If in floating layout do not change the client's layer */
+    if (!c->mon || !c->mon->lt[c->mon->sellt]->arrange)
         return;
     wlr_scene_node_reparent(
             &c->scene->node,
@@ -2534,9 +2607,6 @@ void setsel(struct wl_listener *listener, void *data) {
 }
 
 void setup(void) {
-    struct xkb_context *context;
-    struct xkb_keymap *keymap;
-
     int i, sig[] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
     struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
     sigemptyset(&sa.sa_mask);
@@ -2544,10 +2614,13 @@ void setup(void) {
     for (i = 0; i < (int) LENGTH(sig); i++)
         sigaction(sig[i], &sa, NULL);
 
+    // 初始化日志
     wlr_log_init(log_level, NULL);
 
     /* The Wayland display is managed by libwayland. It handles accepting
-     * clients from the Unix socket, manging Wayland globals, and so on. */
+     * clients from the Unix socket, manging Wayland globals, and so on.
+     * 创建屏幕连接
+     */
     dpy = wl_display_create();
 
     /* The backend is a wlroots feature which abstracts the underlying input and
@@ -2557,7 +2630,10 @@ void setup(void) {
     if (!(backend = wlr_backend_autocreate(dpy, &session)))
         die("couldn't create backend");
 
-    /* Initialize the scene graph used to lay out windows */
+    /**
+     * Initialize the scene graph used to lay out windows
+     * 创建屏幕
+     */
     scene = wlr_scene_create();
     root_bg = wlr_scene_rect_create(&scene->tree, 0, 0, rootcolor);
     for (i = 0; i < NUM_LAYERS; i++)
@@ -2723,56 +2799,8 @@ void setup(void) {
     LISTEN_STATIC(&seat->events.request_start_drag, requeststartdrag);
     LISTEN_STATIC(&seat->events.start_drag, startdrag);
 
-    /*
-     * Configures a keyboard group, which will keep track of all connected
-     * keyboards, keep their modifier and LED states in sync, and handle
-     * keypresses
-     */
-    kb_group.wlr_group = wlr_keyboard_group_create();
-    kb_group.wlr_group->data = &kb_group;
-
-    /*
-     * Virtual keyboards need to be in a different group
-     * https://codeberg.org/dwl/dwl/issues/554
-     */
-    vkb_group.wlr_group = wlr_keyboard_group_create();
-    vkb_group.wlr_group->data = &vkb_group;
-
-    /* Prepare an XKB keymap and assign it to the keyboard group. */
-    context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    if (!(keymap = xkb_keymap_new_from_names(context, &xkb_rules,
-                                             XKB_KEYMAP_COMPILE_NO_FLAGS)))
-        die("failed to compile keymap");
-
-    wlr_keyboard_set_keymap(&kb_group.wlr_group->keyboard, keymap);
-    wlr_keyboard_set_keymap(&vkb_group.wlr_group->keyboard, keymap);
-    xkb_keymap_unref(keymap);
-    xkb_context_unref(context);
-
-    wlr_keyboard_set_repeat_info(&kb_group.wlr_group->keyboard, repeat_rate,
-                                 repeat_delay);
-    wlr_keyboard_set_repeat_info(&vkb_group.wlr_group->keyboard, repeat_rate,
-                                 repeat_delay);
-
-    /* Set up listeners for keyboard events */
-    LISTEN(&kb_group.wlr_group->keyboard.events.key, &kb_group.key, keypress);
-    LISTEN(&kb_group.wlr_group->keyboard.events.modifiers, &kb_group.modifiers,
-           keypressmod);
-    LISTEN(&vkb_group.wlr_group->keyboard.events.key, &vkb_group.key, keypress);
-    LISTEN(&vkb_group.wlr_group->keyboard.events.modifiers,
-           &vkb_group.modifiers, keypressmod);
-
-    kb_group.key_repeat_source = wl_event_loop_add_timer(
-            wl_display_get_event_loop(dpy), keyrepeat, &kb_group);
-    vkb_group.key_repeat_source = wl_event_loop_add_timer(
-            wl_display_get_event_loop(dpy), keyrepeat, &vkb_group);
-
-    /* A seat can only have one keyboard, but this is a limitation of the
-     * Wayland protocol - not wlroots. We assign all connected keyboards to the
-     * same wlr_keyboard_group, which provides a single wlr_keyboard interface
-     * for all of them. Set this combined wlr_keyboard as the seat keyboard.
-     */
-    wlr_seat_set_keyboard(seat, &kb_group.wlr_group->keyboard);
+    kb_group = createkeyboardgroup();
+    wl_list_init(&kb_group->destroy.link);
 
     output_mgr = wlr_output_manager_v1_create(dpy);
     LISTEN_STATIC(&output_mgr->events.apply, outputmgrapply);
@@ -2782,17 +2810,17 @@ void setup(void) {
 
     fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
     fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
-    if (!(font = fcft_from_name(LENGTH(fonts), fonts, fontattrs)))
+    if (!(font = fcft_from_name(LENGTH(fonts), fonts, fontattrs))) {
         die("Could not load font");
+    }
 
     // 左右大小
     lrpad = font->height;
     // bar 高度
     bh = font->height + 2;
 
-    status_event_source =
-            wl_event_loop_add_fd(wl_display_get_event_loop(dpy), STDIN_FILENO,
-                                 WL_EVENT_READABLE, status_in, NULL);
+    status_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy), STDIN_FILENO,
+                                               WL_EVENT_READABLE, status_in, NULL);
 
     /* Make sure XWayland clients don't connect to the parent X server,
      * e.g when running in the x11 backend or the wayland backend and the
@@ -3009,8 +3037,7 @@ void updatemons(struct wl_listener *listener, void *data) {
      * positions, focus, and the stored configuration in wlroots'
      * output-manager implementation.
      */
-    struct wlr_output_configuration_v1 *config =
-            wlr_output_configuration_v1_create();
+    struct wlr_output_configuration_v1 *config = wlr_output_configuration_v1_create();
     Client *c;
     struct wlr_output_configuration_head_v1 *config_head;
     Monitor *m;
@@ -3047,8 +3074,7 @@ void updatemons(struct wl_listener *listener, void *data) {
     wl_list_for_each(m, &mons, link) {
         if (!m->wlr_output->enabled)
             continue;
-        config_head =
-                wlr_output_configuration_head_v1_create(config, m->wlr_output);
+        config_head = wlr_output_configuration_head_v1_create(config, m->wlr_output);
 
         /* Get the effective monitor geometry to use for surfaces */
         wlr_output_layout_get_box(output_layout, m->wlr_output, &m->m);
@@ -3061,8 +3087,7 @@ void updatemons(struct wl_listener *listener, void *data) {
         if (m->lock_surface) {
             struct wlr_scene_tree *scene_tree = m->lock_surface->surface->data;
             wlr_scene_node_set_position(&scene_tree->node, m->m.x, m->m.y);
-            wlr_session_lock_surface_v1_configure(m->lock_surface, m->m.width,
-                                                  m->m.height);
+            wlr_session_lock_surface_v1_configure(m->lock_surface, m->m.width, m->m.height);
         }
 
         /* Calculate the effective monitor geometry to use for clients */
@@ -3112,7 +3137,8 @@ void updatemons(struct wl_listener *listener, void *data) {
 
 void updatebardims(Monitor *m) {
     int rw, rh;
-    wlr_output_transformed_resolution(m->wlr_output, &rw, &rh);
+    // 获取输出设备的当前有效（或实际）分辨率。
+    wlr_output_effective_resolution(m->wlr_output, &rw, &rh);
     m->b.width = rw;
     m->b.height = bh;
 }
@@ -3149,15 +3175,15 @@ void view(const Arg *arg) {
 }
 
 void virtualkeyboard(struct wl_listener *listener, void *data) {
-    struct wlr_virtual_keyboard_v1 *keyboard = data;
+    struct wlr_virtual_keyboard_v1 *kb = data;
+    /* virtual keyboards shouldn't share keyboard group */
+    KeyboardGroup *group = createkeyboardgroup();
     /* Set the keymap to match the group keymap */
-    wlr_keyboard_set_keymap(&keyboard->keyboard,
-                            vkb_group.wlr_group->keyboard.keymap);
-    wlr_keyboard_set_repeat_info(&keyboard->keyboard, repeat_rate,
-                                 repeat_delay);
+    wlr_keyboard_set_keymap(&kb->keyboard, group->wlr_group->keyboard.keymap);
+    LISTEN(&kb->keyboard.base.events.destroy, &group->destroy, destroykeyboardgroup);
 
     /* Add the new keyboard to the group */
-    wlr_keyboard_group_add_keyboard(vkb_group.wlr_group, &keyboard->keyboard);
+    wlr_keyboard_group_add_keyboard(group->wlr_group, &kb->keyboard);
 }
 
 void virtualpointer(struct wl_listener *listener, void *data) {
@@ -3189,10 +3215,11 @@ void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc,
             continue;
 
         if (node->type == WLR_SCENE_NODE_BUFFER) {
-            scene_surface = wlr_scene_surface_try_from_buffer(
-                    wlr_scene_buffer_from_node(node));
-            if (!scene_surface)
+            scene_surface = wlr_scene_surface_try_from_buffer(wlr_scene_buffer_from_node(node));
+            if (!scene_surface) {
                 continue;
+
+            }
             surface = scene_surface->surface;
         }
         /* Walk the tree to find a node that knows the client */
@@ -3389,7 +3416,8 @@ int main(int argc, char *argv[]) {
     if (optind < argc)
         goto usage;
 
-    /* Wayland requires XDG_RUNTIME_DIR for creating its communications socket
+    /*
+     * Wayland requires XDG_RUNTIME_DIR for creating its communications socket
      */
     if (!getenv("XDG_RUNTIME_DIR"))
         die("XDG_RUNTIME_DIR must be set");

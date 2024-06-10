@@ -1,6 +1,6 @@
 # dwl 版本
 
-基于 `577d8da6`(2024-04-04 18:46) 来初始化
+更新最新代码 `21205f2f`(24-5-31 at 上午7:48)，描述：`make sure clients share the same layer on floating layout`
 
 # 安装
 
