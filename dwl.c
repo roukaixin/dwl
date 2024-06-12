@@ -88,8 +88,7 @@
         static struct wl_listener _l = {.notify = (H)};                        \
         wl_signal_add((E), &_l);                                               \
     } while (0)
-#define TEXTW(text)                                                            \
-    (drwl_text(NULL, font, 0, 0, 0, 0, 0, text, NULL, NULL) + lrpad)
+#define TEXTW(mon, text) (drwl_text(NULL, mon->font, 0, 0, 0, 0, 0, text, NULL, NULL) + mon->lrpad)
 
 /* enums */
 enum {
@@ -246,7 +245,11 @@ struct Monitor {
     /**
      * bar 区域
      */
-    struct wlr_box b;           /* bar area */
+    struct {
+        int width, height;
+        int real_width, real_height; /* non-scaled */
+        float scale;
+    } b; /* bar area */
     struct wlr_box w;           /* window area, layout-relative */
     struct wl_list layers[4]; /* LayerSurface.link */
     const Layout *lt[2];
@@ -258,6 +261,8 @@ struct Monitor {
     int nmaster;
     int showbar;
     char ltsymbol[16];
+    struct fcft_font *font;
+    int lrpad;
 };
 
 typedef struct {
@@ -593,15 +598,6 @@ static struct wl_list mons;
  */
 static Monitor *selmon;
 
-static struct fcft_font *font;
-/**
- * bar 高度
- */
-static int bh;
-/**
- * 左右大小
- */
-static int lrpad;
 /**
  * status 文本内容
  */
@@ -749,8 +745,8 @@ void arrangelayers(Monitor *m) {
         return;
 
     if (m->showbar) {
-        usable_area.height -= m->b.height;
-        usable_area.y += topbar ? m->b.height : 0;
+        usable_area.height -= m->b.real_height;
+        usable_area.y += topbar ? m->b.real_height : 0;
     }
 
     /* Arrange exclusive surfaces from top->bottom */
@@ -853,14 +849,14 @@ void buttonpress(struct wl_listener *listener, void *data) {
         buffer == selmon->scene_buffer) {
         x = selmon->m.x;
         do
-            x += TEXTW(tags[i]);
+            x += TEXTW(selmon, tags[i]);
         while (cursor->x >= x && ++i < LENGTH(tags));
         if (i < LENGTH(tags)) {
             click = ClkTagBar;
             arg.ui = 1 << i;
-        } else if (cursor->x < x + TEXTW(selmon->ltsymbol))
+        } else if (cursor->x < x + TEXTW(selmon, selmon->ltsymbol))
             click = ClkLtSymbol;
-        else if (cursor->x > selmon->w.width - (int) TEXTW(stext))
+        else if (cursor->x > selmon->w.width - (int)TEXTW(selmon, stext))
             click = ClkStatus;
         else
             click = ClkTitle;
@@ -954,7 +950,6 @@ void cleanup(void) {
        destroyed) to avoid destroying them with an invalid scene output. */
     wlr_scene_node_destroy(&scene->tree.node);
 
-    fcft_destroy(font);
     fcft_fini();
 }
 
@@ -967,6 +962,8 @@ void cleanupmon(struct wl_listener *listener, void *data) {
     for (i = 0; i < LENGTH(m->layers); i++) {
         wl_list_for_each_safe(l, tmp, &m->layers[i], link)wlr_layer_surface_v1_destroy(l->layer_surface);
     }
+
+    fcft_destroy(m->font);
 
     wl_list_remove(&m->destroy.link);
     wl_list_remove(&m->frame.link);
@@ -1575,8 +1572,8 @@ static void draw_rect(pixman_image_t *pix, int16_t x, int16_t y, uint16_t w,
 void drawbar(Monitor *mon) {
     int x, w, status_w = 0;
     int sel;
-    int boxs = font->height / 9;
-    int boxw = font->height / 6 + 2;
+    int boxs = mon->font->height / 9;
+    int boxw = mon->font->height / 6 + 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
     pixman_image_t * pix;
@@ -1604,8 +1601,8 @@ void drawbar(Monitor *mon) {
         strncpy(stext, "dwl-"
     VERSION, sizeof(stext));
     // status 宽度
-    status_w = TEXTW(stext) - lrpad + 2;
-    drwl_text(pix, font, mon->b.width - status_w, 0, status_w, mon->b.height, 0, stext,
+    status_w = TEXTW(mon, stext) - mon->lrpad;
+    drwl_text(pix, mon->font, mon->b.width - status_w, 0, status_w, mon->b.height, 0, stext,
               &normbarfg, &normbarbg);
 
 
@@ -1616,13 +1613,12 @@ void drawbar(Monitor *mon) {
         if (c->isurgent)
             urg |= c->tags;
     }
-    c = focustop(mon);
     x = 0;
     for (i = 0; i < LENGTH(tags); i++) {
-        w = TEXTW(tags[i]);
+        w = TEXTW(mon, tags[i]);
         sel = mon->tagset[mon->seltags] & 1 << i;
 
-        drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2, tags[i],
+        drwl_text(pix, mon->font, x, 0, w, mon->b.height, mon->lrpad / 2, tags[i],
                   urg & 1 << i ? &selbarbg : (sel ? &selbarfg : &normbarfg),
                   urg & 1 << i ? &selbarfg : (sel ? &selbarbg : &normbarbg));
 
@@ -1634,12 +1630,12 @@ void drawbar(Monitor *mon) {
         x += w;
     }
 
-    w = TEXTW(mon->ltsymbol);
-    x = drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2, mon->ltsymbol, &normbarfg, &normbarbg);
+    w = TEXTW(mon, mon->ltsymbol);
+    x = drwl_text(pix, mon->font, x, 0, w, mon->b.height, mon->lrpad / 2, mon->ltsymbol, &normbarfg, &normbarbg);
 
     if ((w = mon->b.width - status_w - x) > mon->b.height) {
-        if (c != NULL) {
-            drwl_text(pix, font, x, 0, w, mon->b.height, lrpad / 2,
+        if ((c = focustop(mon)) != NULL) {
+            drwl_text(pix, mon->font, x, 0, w, mon->b.height, mon->lrpad / 2,
                       client_get_title(c),
                       mon == selmon ? &selbarfg : &normbarfg,
                       (mon == selmon && c) ? &selbarbg : &normbarbg);
@@ -1652,6 +1648,8 @@ void drawbar(Monitor *mon) {
     }
 
     pixman_image_unref(pix);
+    wlr_scene_buffer_set_dest_size(mon->scene_buffer,
+                                   mon->b.real_width, mon->b.real_height);
     wlr_scene_node_set_position(
             &mon->scene_buffer->node, mon->m.x,
             mon->m.y + (topbar ? 0 : mon->m.height - mon->b.height));
@@ -2810,14 +2808,6 @@ void setup(void) {
 
     fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
     fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
-    if (!(font = fcft_from_name(LENGTH(fonts), fonts, fontattrs))) {
-        die("Could not load font");
-    }
-
-    // 左右大小
-    lrpad = font->height;
-    // bar 高度
-    bh = font->height + 2;
 
     status_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy), STDIN_FILENO,
                                                WL_EVENT_READABLE, status_in, NULL);
@@ -3137,10 +3127,23 @@ void updatemons(struct wl_listener *listener, void *data) {
 
 void updatebardims(Monitor *m) {
     int rw, rh;
+    char fontattrs[12];
+
     // 获取输出设备的当前有效（或实际）分辨率。
-    wlr_output_effective_resolution(m->wlr_output, &rw, &rh);
+    wlr_output_transformed_resolution(m->wlr_output, &rw, &rh);
     m->b.width = rw;
-    m->b.height = bh;
+    m->b.real_width = (int)((float)m->b.width / m->wlr_output->scale);
+    if (m->b.scale == m->wlr_output->scale && m->font)
+        return;
+    fcft_destroy(m->font);
+    snprintf(fontattrs, sizeof(fontattrs), "dpi=%.2f", 96. * m->wlr_output->scale);
+    if (!(m->font = fcft_from_name(LENGTH(fonts), fonts, fontattrs)))
+        die("Could not load font");
+
+    m->b.scale = m->wlr_output->scale;
+    m->lrpad = m->font->height;
+    m->b.height = m->font->height + 2;
+    m->b.real_height = (int)((float)m->b.height / m->wlr_output->scale);
 }
 
 void updatetitle(struct wl_listener *listener, void *data) {
