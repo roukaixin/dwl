@@ -355,6 +355,11 @@ static void createlayersurface(struct wl_listener *listener, void *data);
 
 static void createlocksurface(struct wl_listener *listener, void *data);
 
+/**
+ * 创建显示屏
+ * @param listener
+ * @param data
+ */
 static void createmon(struct wl_listener *listener, void *data);
 
 static void createnotify(struct wl_listener *listener, void *data);
@@ -733,6 +738,7 @@ void arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area,
 
 void arrangelayers(Monitor *m) {
     int i;
+    // 监视器大小区域
     struct wlr_box usable_area = m->m;
     LayerSurface *l;
     uint32_t layers_above_shell[] = {
@@ -842,10 +848,8 @@ void buttonpress(struct wl_listener *listener, void *data) {
         click = ClkClient;
 
     if (!c &&
-        (node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x,
-                                  cursor->y, NULL, NULL)) &&
-        (buffer = wlr_scene_buffer_from_node(node)) &&
-        buffer == selmon->scene_buffer) {
+        (node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
+        (buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer) {
         x = selmon->m.x;
         do
             x += TEXTW(selmon, tags[i]);
@@ -1114,8 +1118,7 @@ void createlayersurface(struct wl_listener *listener, void *data) {
             layers[layermap[layer_surface->pending.layer]];
     struct wlr_layer_surface_v1_state old_state;
 
-    if (!layer_surface->output &&
-        !(layer_surface->output = selmon ? selmon->wlr_output : NULL)) {
+    if (!layer_surface->output && !(layer_surface->output = selmon ? selmon->wlr_output : NULL)) {
         wlr_layer_surface_v1_destroy(layer_surface);
         return;
     }
@@ -1172,12 +1175,8 @@ void createlocksurface(struct wl_listener *listener, void *data) {
         client_notify_enter(lock_surface->surface, wlr_seat_get_keyboard(seat));
 }
 
-/**
- * 创建显示屏
- * @param listener
- * @param data
- */
-void createmon(struct wl_listener *listener, void *data) {
+void
+createmon(struct wl_listener *listener, void *data) {
     /* This event is raised by the backend when a new output (aka a display or
      * monitor) becomes available. */
     struct wlr_output *wlr_output = data;
@@ -1205,8 +1204,7 @@ void createmon(struct wl_listener *listener, void *data) {
             m->mfact = r->mfact;
             m->nmaster = r->nmaster;
             m->lt[0] = r->lt;
-            m->lt[1] =
-                    &layouts[LENGTH(layouts) > 1 && r->lt != &layouts[1]];
+            m->lt[1] = &layouts[LENGTH(layouts) > 1 && r->lt != &layouts[1]];
             strncpy(m->ltsymbol, m->lt[m->sellt]->symbol,
                     LENGTH(m->ltsymbol));
             wlr_output_state_set_scale(&state, r->scale);
@@ -1224,8 +1222,7 @@ void createmon(struct wl_listener *listener, void *data) {
     /* Set up event listeners */
     LISTEN(&wlr_output->events.frame, &m->frame, rendermon);
     LISTEN(&wlr_output->events.destroy, &m->destroy, cleanupmon);
-    LISTEN(&wlr_output->events.request_state, &m->request_state,
-           requestmonstate);
+    LISTEN(&wlr_output->events.request_state, &m->request_state, requestmonstate);
 
     wlr_output_state_set_enabled(&state, 1);
     wlr_output_commit_state(wlr_output, &state);
@@ -1575,7 +1572,7 @@ void drawbar(Monitor *mon) {
     int boxw = mon->font->height / 6 + 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
-    pixman_image_t *pix;
+    pixman_image_t * pix;
     Client *c;
     Buffer *buf;
 
@@ -1595,14 +1592,25 @@ void drawbar(Monitor *mon) {
     pix = pixman_image_create_bits(PIXMAN_a8r8g8b8, mon->b.width, mon->b.height, buf->data, stride);
 
     /* draw status first so it can be overdrawn by tags later */
-
-    if (stext[0] == '\0')
-        strncpy(stext, "dwl-"
-    VERSION, sizeof(stext));
-    // status 宽度
-    status_w = TEXTW(mon, stext) - mon->lrpad;
-    drwl_text(pix, mon->font, mon->b.width - status_w, 0, status_w, mon->b.height, 0, stext,
-              &normbarfg, &normbarbg);
+    if (mon == selmon) {
+        if (stext[0] == '\0') {
+            strncpy(stext, "dwl-"
+            VERSION, sizeof(stext));
+        }
+        // status 宽度
+        status_w = TEXTW(mon, stext) - mon->lrpad;
+        drwl_text(pix,
+                  mon->font,
+                  mon->b.width - status_w,
+                  0,
+                  status_w,
+                  mon->b.height,
+                  0,
+                  stext,
+                  &normbarfg,
+                  &normbarbg
+        );
+    }
 
 
     wl_list_for_each(c, &clients, link) {
@@ -1615,7 +1623,8 @@ void drawbar(Monitor *mon) {
     x = 0;
     for (i = 0; i < LENGTH(tags); i++) {
         w = TEXTW(mon, tags[i]);
-        sel = mon->tagset[mon->seltags] & 1 << i;
+        // 是否选中当前 tag
+        sel = (int) mon->tagset[mon->seltags] & 1 << i;
 
         drwl_text(pix, mon->font, x, 0, w, mon->b.height, mon->lrpad / 2, tags[i],
                   urg & 1 << i ? &selbarbg : (sel ? &selbarfg : &normbarfg),
@@ -1647,11 +1656,10 @@ void drawbar(Monitor *mon) {
     }
 
     pixman_image_unref(pix);
-    wlr_scene_buffer_set_dest_size(mon->scene_buffer,
-                                   mon->b.real_width, mon->b.real_height);
+    wlr_scene_buffer_set_dest_size(mon->scene_buffer, mon->b.real_width, mon->b.real_height);
     wlr_scene_node_set_position(
             &mon->scene_buffer->node, mon->m.x + sidepad,
-            mon->m.y + (topbar ? 0 : mon->m.height - mon->b.real_height - vertpad)
+            mon->m.y + (topbar ? vertpad : mon->m.height - mon->b.real_height - vertpad)
     );
     wlr_scene_buffer_set_buffer(mon->scene_buffer, &buf->base);
     wlr_buffer_drop(&buf->base);
@@ -2436,11 +2444,11 @@ void run(char *startup_cmd) {
             die("startup: execl:");
         }
     }
-    drawbars();
 
     /* At this point the outputs are initialized, choose initial selmon based on
      * cursor position, and set default cursor image */
     selmon = xytomon(cursor->x, cursor->y);
+    drawbars();
 
     /* TODO hack to get cursor to display in its initial location (100, 100)
      * instead of (0, 0) and then jumping. still may not be fully
