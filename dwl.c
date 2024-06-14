@@ -177,6 +177,9 @@ typedef struct {
     struct wl_listener configure;
     struct wl_listener set_hints;
 #endif
+    /**
+     * 边框的宽度
+     */
     unsigned int bw;
     uint32_t tags;
     int isfloating, isurgent, isfullscreen;
@@ -253,8 +256,14 @@ struct Monitor {
     struct wlr_box w;           /* window area, layout-relative */
     struct wl_list layers[4]; /* LayerSurface.link */
     const Layout *lt[2];
+    /**
+     * 激活的 tag
+     */
     unsigned int seltags;
     unsigned int sellt;
+    /**
+     * 保存当前 tag 和 上一个 tag信息
+     */
     uint32_t tagset[2];
     float mfact;
     int gamma_lut_changed;
@@ -1204,9 +1213,8 @@ createmon(struct wl_listener *listener, void *data) {
             m->mfact = r->mfact;
             m->nmaster = r->nmaster;
             m->lt[0] = r->lt;
-            m->lt[1] = &layouts[LENGTH(layouts) > 1 && r->lt != &layouts[1]];
-            strncpy(m->ltsymbol, m->lt[m->sellt]->symbol,
-                    LENGTH(m->ltsymbol));
+            m->lt[1] = &layouts[(r->lt != &layouts[1]) != 0];
+            strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
             wlr_output_state_set_scale(&state, r->scale);
             wlr_output_state_set_transform(&state, r->rr);
             break;
@@ -1565,11 +1573,12 @@ static void draw_rect(pixman_image_t *pix, int16_t x, int16_t y, uint16_t w,
                                            {x + w - 1, y,         1, h}});
 }
 
-void drawbar(Monitor *mon) {
+void
+drawbar(Monitor *mon) {
     int x, w, status_w = 0;
     int sel;
     int boxs = mon->font->height / 9;
-    int boxw = mon->font->height / 6 + 2;
+    int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
     pixman_image_t * pix;
@@ -1620,36 +1629,66 @@ void drawbar(Monitor *mon) {
         if (c->isurgent)
             urg |= c->tags;
     }
+    // 绘制 tags。x 表示开始 x 坐标
     x = 0;
     for (i = 0; i < LENGTH(tags); i++) {
+        // 一个 tag 宽度
         w = TEXTW(mon, tags[i]);
         // 是否选中当前 tag
         sel = (int) mon->tagset[mon->seltags] & 1 << i;
-
-        drwl_text(pix, mon->font, x, 0, w, mon->b.height, mon->lrpad / 2, tags[i],
+        drwl_text(pix,
+                  mon->font,
+                  x,
+                  0,
+                  w,
+                  mon->b.height,
+                  mon->lrpad / 2,
+                  tags[i],
                   urg & 1 << i ? &selbarbg : (sel ? &selbarfg : &normbarfg),
-                  urg & 1 << i ? &selbarfg : (sel ? &selbarbg : &normbarbg));
+                  urg & 1 << i ? &selbarfg : (sel ? &selbarbg : &normbarbg)
+        );
 
-        if (occ & 1 << i)
-            draw_rect(pix, x + boxs, boxs, boxw, boxw, sel,
-                      urg & 1 << i ? &selbarbg
-                                   : (sel ? &selbarfg : &normbarfg));
+        if (sel) {
+            draw_rect(pix,
+                      (int16_t) (x + 2),
+                      (int16_t) (mon->b.height - boxw),
+                      w + mon->lrpad - 4,
+                      boxw,
+                      sel,
+                      urg & 1 << i ? &selbarbg : (sel ? &selbarfg : &normbarfg)
+            );
+        }
 
         x += w;
     }
 
+    // 绘制布局图标
     w = TEXTW(mon, mon->ltsymbol);
     x = drwl_text(pix, mon->font, x, 0, w, mon->b.height, mon->lrpad / 2, mon->ltsymbol, &normbarfg, &normbarbg);
 
+    // 绘制 title
     if ((w = mon->b.width - status_w - x) > mon->b.height) {
         if ((c = focustop(mon)) != NULL) {
-            drwl_text(pix, mon->font, x, 0, w, mon->b.height, mon->lrpad / 2,
+            drwl_text(pix,
+                      mon->font,
+                      x,
+                      0,
+                      w,
+                      mon->b.height,
+                      mon->lrpad / 2,
                       client_get_title(c),
                       mon == selmon ? &selbarfg : &normbarfg,
-                      (mon == selmon && c) ? &selbarbg : &normbarbg);
-            if (c && c->isfloating)
-                drwl_rect(pix, x + boxs, boxs, boxw, boxw, 0,
+                      (mon == selmon && c) ? &selbarbg : &normbarbg
+            );
+            if (c && c->isfloating) {
+                drwl_rect(pix,
+                          x + boxs,
+                          boxs,
+                          boxw,
+                          boxw,
+                          0,
                           mon == selmon ? &selbarfg : &normbarfg);
+            }
         } else {
             drwl_rect(pix, x, 0, w, mon->b.height, 1, &normbarbg);
         }
@@ -2409,11 +2448,9 @@ void resize(Client *c, struct wlr_box geo, int interact) {
     wlr_scene_rect_set_size(c->border[1], c->geom.width, c->bw);
     wlr_scene_rect_set_size(c->border[2], c->bw, c->geom.height - 2 * c->bw);
     wlr_scene_rect_set_size(c->border[3], c->bw, c->geom.height - 2 * c->bw);
-    wlr_scene_node_set_position(&c->border[1]->node, 0,
-                                c->geom.height - c->bw);
+    wlr_scene_node_set_position(&c->border[1]->node, 0, c->geom.height - c->bw);
     wlr_scene_node_set_position(&c->border[2]->node, 0, c->bw);
-    wlr_scene_node_set_position(&c->border[3]->node, c->geom.width - c->bw,
-                                c->bw);
+    wlr_scene_node_set_position(&c->border[3]->node, c->geom.width - c->bw, c->bw);
 
     /* this is a no-op if size hasn't changed */
     c->resize = client_set_size(c, c->geom.width - 2 * c->bw,
@@ -3187,7 +3224,8 @@ void urgent(struct wl_listener *listener, void *data) {
         client_set_border_color(c, urgentcolor);
 }
 
-void view(const Arg *arg) {
+void
+view(const Arg *arg) {
     if (!selmon || (arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
         return;
     selmon->seltags ^= 1; /* toggle sel tagset */
@@ -3195,7 +3233,7 @@ void view(const Arg *arg) {
         selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
     focusclient(focustop(selmon), 1);
     arrange(selmon);
-    drawbars();
+    drawbar(selmon);
 }
 
 void virtualkeyboard(struct wl_listener *listener, void *data) {

@@ -20,10 +20,10 @@ static const int topbar         = 1; /* 0 means bottom bar */
 static const int vertpad        = 5; /* vertical padding of bar (上下的间距) */
 static const int sidepad        = 5; /* horizontal padding of bar (左右的间距) */
 static const char *fonts[]      = {"JetBrains Mono:style=ExtraLight,Regular:size=14:antialias=true:autohint=true"};
-static pixman_color_t normbarfg = { 0xbbbb, 0xbbbb, 0xbbbb, 0xffff };
-static pixman_color_t normbarbg = { 0x2222, 0x2222, 0x2222, 0xffff };
-static pixman_color_t selbarfg  = { 0xeeee, 0xeeee, 0xeeee, 0xffff };
-static pixman_color_t selbarbg  = { 0x0000, 0x5555, 0x7777, 0xffff };
+static pixman_color_t normbarfg = { 0xbbbb, 0xbbbb, 0xbbbb, 0xffU };
+static pixman_color_t normbarbg = { 0x3333, 0x3333, 0x3333, 0xc000 };
+static pixman_color_t selbarfg  = { 0xeeee, 0xeeee, 0xeeee, 0xffU };
+static pixman_color_t selbarbg  = { 0x3333, 0x3333, 0x3333, 0xc000 };
 
 /* tagging - TAGCOUNT must be no greater than 31 */
 static char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };
