@@ -2892,40 +2892,53 @@ void tagmon(const Arg *arg) {
 }
 
 void tile(Monitor *m) {
-    unsigned int mw, my, ty;
+    // master_w : master 宽度、master_y : master y轴
+    unsigned int master_w, master_y, ty;
+    // n : 表示平铺的窗口数量
     int i, n = 0;
     Client *c;
 
-    wl_list_for_each(c, &clients, link) if (VISIBLEON(c, m) && !c->isfloating &&
-                                            !c->isfullscreen)
+    wl_list_for_each(c, &clients, link) {
+        // VISIBLEON 在屏幕上可见
+        if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen) {
             n++;
+        }
+    }
+
     if (n == 0)
         return;
 
     if (n > m->nmaster)
-        mw = m->nmaster ? ROUND(m->w.width * m->mfact) : 0;
+        master_w = m->nmaster ? ROUND(m->w.width * m->mfact) : 0;
     else
-        mw = m->w.width;
-    i = my = ty = 0;
+        master_w = m->w.width;
+    master_y = 0;
+    ty = 0;
+    i = 0;
     wl_list_for_each(c, &clients, link) {
         if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
             continue;
         if (i < m->nmaster) {
             resize(c,
-                   (struct wlr_box) {.x      = m->w.x,
-                           .y      = m->w.y + my,
-                           .width  = mw,
-                           .height = (m->w.height - my) /
-                                     (MIN(n, m->nmaster) - i)},
-                   0);
-            my += c->geom.height;
+                   (struct wlr_box) {
+                           .x      = m->w.x,
+                           .y      = m->w.y + (int) master_y,
+                           .width  = (int) master_w,
+                           .height = (m->w.height - (int) master_y) / (MIN(n, m->nmaster) - i)
+                   },
+                   0
+            );
+            master_y += c->geom.height;
         } else {
             resize(c,
-                   (struct wlr_box) {.x      = m->w.x + mw,
-                           .y      = m->w.y + ty,
-                           .width  = m->w.width - mw,
-                           .height = (m->w.height - ty) / (n - i)},
-                   0);
+                   (struct wlr_box) {
+                           .x      = m->w.x + (int) master_w,
+                           .y      = m->w.y + (int) ty,
+                           .width  = m->w.width - (int) master_w,
+                           .height = (m->w.height - (int) ty) / (n - i)
+                   },
+                   0
+            );
             ty += c->geom.height;
         }
         i++;
