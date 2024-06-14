@@ -310,8 +310,7 @@ static void applyrules(Client *c);
 
 static void arrange(Monitor *m);
 
-static void arrangelayer(Monitor *m, struct wl_list *list,
-                         struct wlr_box *usable_area, int exclusive);
+static void arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int exclusive);
 
 static void arrangelayers(Monitor *m);
 
@@ -520,7 +519,7 @@ static void unmapnotify(struct wl_listener *listener, void *data);
 
 static void updatemons(struct wl_listener *listener, void *data);
 
-static void updatebardims(Monitor *m);
+static void updatebar(Monitor *m);
 
 static void updatetitle(struct wl_listener *listener, void *data);
 
@@ -734,7 +733,6 @@ void arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area,
 
 void arrangelayers(Monitor *m) {
     int i;
-    //
     struct wlr_box usable_area = m->m;
     LayerSurface *l;
     uint32_t layers_above_shell[] = {
@@ -745,8 +743,9 @@ void arrangelayers(Monitor *m) {
         return;
 
     if (m->showbar) {
-        usable_area.height -= m->b.real_height;
-        usable_area.y += topbar ? m->b.real_height : 0;
+        // 显示 bar
+        usable_area.height -= m->b.real_height + vertpad;
+        usable_area.y += topbar ? m->b.real_height + vertpad : 0;
     }
 
     /* Arrange exclusive surfaces from top->bottom */
@@ -856,7 +855,7 @@ void buttonpress(struct wl_listener *listener, void *data) {
             arg.ui = 1 << i;
         } else if (cursor->x < x + TEXTW(selmon, selmon->ltsymbol))
             click = ClkLtSymbol;
-        else if (cursor->x > selmon->w.width - (int)TEXTW(selmon, stext))
+        else if (cursor->x > selmon->w.width - (int) TEXTW(selmon, stext))
             click = ClkStatus;
         else
             click = ClkTitle;
@@ -1235,7 +1234,7 @@ void createmon(struct wl_listener *listener, void *data) {
     m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
     m->scene_buffer->point_accepts_input = bar_accepts_input;
     m->showbar = showbar;
-    updatebardims(m);
+    updatebar(m);
 
     wl_list_insert(&mons, &m->link);
     drawbars();
@@ -1576,7 +1575,7 @@ void drawbar(Monitor *mon) {
     int boxw = mon->font->height / 6 + 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
-    pixman_image_t * pix;
+    pixman_image_t *pix;
     Client *c;
     Buffer *buf;
 
@@ -1651,8 +1650,9 @@ void drawbar(Monitor *mon) {
     wlr_scene_buffer_set_dest_size(mon->scene_buffer,
                                    mon->b.real_width, mon->b.real_height);
     wlr_scene_node_set_position(
-            &mon->scene_buffer->node, mon->m.x,
-            mon->m.y + (topbar ? 0 : mon->m.height - mon->b.height));
+            &mon->scene_buffer->node, mon->m.x + sidepad,
+            mon->m.y + (topbar ? 0 : mon->m.height - mon->b.real_height - vertpad)
+    );
     wlr_scene_buffer_set_buffer(mon->scene_buffer, &buf->base);
     wlr_buffer_drop(&buf->base);
 }
@@ -3124,7 +3124,7 @@ void updatemons(struct wl_listener *listener, void *data) {
 
     /* Update bar */
     wl_list_for_each(m, &mons, link) {
-        updatebardims(m);
+        updatebar(m);
         drawbar(m);
     }
 
@@ -3138,14 +3138,14 @@ void updatemons(struct wl_listener *listener, void *data) {
     wlr_output_manager_v1_set_configuration(output_mgr, config);
 }
 
-void updatebardims(Monitor *m) {
+void updatebar(Monitor *m) {
     int rw, rh;
     char fontattrs[12];
 
     // 获取输出设备的当前有效（或实际）分辨率。
     wlr_output_transformed_resolution(m->wlr_output, &rw, &rh);
-    m->b.width = rw;
-    m->b.real_width = (int)((float)m->b.width / m->wlr_output->scale);
+    m->b.width = rw - 2 * sidepad;
+    m->b.real_width = (int) ((float) m->b.width / m->wlr_output->scale);
     if (m->b.scale == m->wlr_output->scale && m->font)
         return;
     fcft_destroy(m->font);
@@ -3156,7 +3156,7 @@ void updatebardims(Monitor *m) {
     m->b.scale = m->wlr_output->scale;
     m->lrpad = m->font->height;
     m->b.height = m->font->height + 2;
-    m->b.real_height = (int)((float)m->b.height / m->wlr_output->scale);
+    m->b.real_height = (int) ((float) m->b.height / m->wlr_output->scale);
 }
 
 void updatetitle(struct wl_listener *listener, void *data) {

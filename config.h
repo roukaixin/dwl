@@ -17,6 +17,8 @@ static const float fullscreen_bg[]         = {0.1f, 0.1f, 0.1f, 1.0f}; /* You ca
 /* bar */
 static const int showbar        = 1; /* 0 means no bar */
 static const int topbar         = 1; /* 0 means bottom bar */
+static const int vertpad        = 5; /* vertical padding of bar (上下的间距) */
+static const int sidepad        = 5; /* horizontal padding of bar (左右的间距) */
 static const char *fonts[]      = {"JetBrains Mono:style=ExtraLight,Regular:size=14:antialias=true:autohint=true"};
 static pixman_color_t normbarfg = { 0xbbbb, 0xbbbb, 0xbbbb, 0xffff };
 static pixman_color_t normbarbg = { 0x2222, 0x2222, 0x2222, 0xffff };
