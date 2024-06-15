@@ -323,6 +323,11 @@ static void arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usabl
 
 static void arrangelayers(Monitor *m);
 
+/**
+ * 自启动
+ */
+static void autostartexec(void);
+
 static void axisnotify(struct wl_listener *listener, void *data);
 
 static bool bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx,
@@ -640,6 +645,9 @@ static xcb_atom_t           netatom[ NetLast ];
 /* attempt to encapsulate suck into one file */
 #include "client.h"
 
+static pid_t *autostart_pids;
+static size_t autostart_len;
+
 /* function implementations */
 void applybounds(Client *c, struct wlr_box *bbox) {
     /* set minimum possible */
@@ -792,6 +800,27 @@ void arrangelayers(Monitor *m) {
     }
 }
 
+void
+autostartexec(void) {
+    const char *const *p;
+    size_t i = 0;
+
+    /* count entries */
+    for (p = autostart; *p; autostart_len++, p++)
+        while (*++p);
+
+    autostart_pids = calloc(autostart_len, sizeof(pid_t));
+    for (p = autostart; *p; i++, p++) {
+        if ((autostart_pids[i] = fork()) == 0) {
+            setsid();
+            execvp(*p, (char *const *) p);
+            die("dwl: execvp %s:", *p);
+        }
+        /* skip arguments */
+        while (*++p);
+    }
+}
+
 void axisnotify(struct wl_listener *listener, void *data) {
     /* This event is forwarded by the cursor when a pointer emits an axis event,
      * for example when you move the scroll wheel. */
@@ -939,11 +968,21 @@ void checkidleinhibitor(struct wlr_surface *exclude) {
 }
 
 void cleanup(void) {
+    size_t i;
 #ifdef XWAYLAND
     wlr_xwayland_destroy(xwayland);
     xwayland = NULL;
 #endif
     wl_display_destroy_clients(dpy);
+
+    /* kill child processes */
+    for (i = 0; i < autostart_len; i++) {
+        if (0 < autostart_pids[i]) {
+            kill(autostart_pids[i], SIGTERM);
+            waitpid(autostart_pids[i], NULL, 0);
+        }
+    }
+
     if (child_pid > 0) {
         kill(child_pid, SIGTERM);
         waitpid(child_pid, NULL, 0);
@@ -1843,31 +1882,48 @@ void fullscreennotify(struct wl_listener *listener, void *data) {
 
 void handlesig(int signo) {
     if (signo == SIGCHLD) {
-#ifdef XWAYLAND
+
         siginfo_t in;
         /* wlroots expects to reap the XWayland process itself, so we
          * use WNOWAIT to keep the child waitable until we know it's not
          * XWayland.
          */
-        while (!waitid(P_ALL, 0, &in, WEXITED | WNOHANG | WNOWAIT) &&
-               in.si_pid && (!xwayland || in.si_pid != xwayland->server->pid))
-            waitpid(in.si_pid, NULL, 0);
-#else
-        while (waitpid(-1, NULL, WNOHANG) > 0);
+        while (!waitid(P_ALL, 0, &in, WEXITED | WNOHANG | WNOWAIT) && in.si_pid
+
+#ifdef XWAYLAND
+            && (!xwayland || in.si_pid != xwayland->server->pid)
 #endif
+                ) {
+            pid_t *p, *lim;
+            waitpid(in.si_pid, NULL, 0);
+            if (in.si_pid == child_pid)
+                child_pid = -1;
+            if (!(p = autostart_pids))
+                continue;
+            lim = &p[autostart_len];
+
+            for (; p < lim; p++) {
+                if (*p == in.si_pid) {
+                    *p = -1;
+                    break;
+                }
+            }
+        }
     } else if (signo == SIGINT || signo == SIGTERM) {
         quit(NULL);
     }
 }
 
-void incnmaster(const Arg *arg) {
+void
+incnmaster(const Arg *arg) {
     if (!arg || !selmon)
         return;
     selmon->nmaster = MAX(selmon->nmaster + arg->i, 0);
     arrange(selmon);
 }
 
-void inputdevice(struct wl_listener *listener, void *data) {
+void
+inputdevice(struct wl_listener *listener, void *data) {
     /* This event is raised by the backend when a new input device becomes
      * available. */
     struct wlr_input_device *device = data;
@@ -2458,7 +2514,8 @@ void resize(Client *c, struct wlr_box geo, int interact) {
     wlr_scene_subsurface_tree_set_clip(&c->scene_surface->node, &clip);
 }
 
-void run(char *startup_cmd) {
+void
+run(char *startup_cmd) {
     /* Add a Unix socket to the Wayland display. */
     const char *socket = wl_display_add_socket_auto(dpy);
     if (!socket)
@@ -2470,8 +2527,8 @@ void run(char *startup_cmd) {
     if (!wlr_backend_start(backend))
         die("startup: backend_start");
 
-    /* Now that the socket exists and the backend is started, run the startup
-     * command */
+    /* Now that the socket exists and the backend is started, run the startup command */
+    autostartexec();
     if (startup_cmd) {
         if ((child_pid = fork()) < 0)
             die("startup: fork:");
@@ -2500,7 +2557,8 @@ void run(char *startup_cmd) {
     wl_display_run(dpy);
 }
 
-void setcursor(struct wl_listener *listener, void *data) {
+void
+setcursor(struct wl_listener *listener, void *data) {
     /* This event is raised by the seat when a client provides a cursor image */
     struct wlr_seat_pointer_request_set_cursor_event *event = data;
     /* If we're "grabbing" the cursor, don't use the client's image, we will
@@ -2519,7 +2577,8 @@ void setcursor(struct wl_listener *listener, void *data) {
                                event->hotspot_y);
 }
 
-void setcursorshape(struct wl_listener *listener, void *data) {
+void
+setcursorshape(struct wl_listener *listener, void *data) {
     struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
     if (cursor_mode != CurNormal && cursor_mode != CurPressed)
         return;
@@ -2531,7 +2590,8 @@ void setcursorshape(struct wl_listener *listener, void *data) {
                                wlr_cursor_shape_v1_name(event->shape));
 }
 
-void setfloating(Client *c, int floating) {
+void
+setfloating(Client *c, int floating) {
     Client *p = client_get_parent(c);
     c->isfloating = floating;
     /* If in floating layout do not change the client's layer */
@@ -2546,7 +2606,8 @@ void setfloating(Client *c, int floating) {
     drawbars();
 }
 
-void setfullscreen(Client *c, int fullscreen) {
+void
+setfullscreen(Client *c, int fullscreen) {
     c->isfullscreen = fullscreen;
     if (!c->mon)
         return;
@@ -2569,7 +2630,8 @@ void setfullscreen(Client *c, int fullscreen) {
     drawbars();
 }
 
-void setgamma(struct wl_listener *listener, void *data) {
+void
+setgamma(struct wl_listener *listener, void *data) {
     struct wlr_gamma_control_manager_v1_set_gamma_event *event = data;
     Monitor *m = event->output->data;
     if (!m)
@@ -2578,7 +2640,8 @@ void setgamma(struct wl_listener *listener, void *data) {
     wlr_output_schedule_frame(m->wlr_output);
 }
 
-void setlayout(const Arg *arg) {
+void
+setlayout(const Arg *arg) {
     if (!selmon)
         return;
     if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
@@ -2592,7 +2655,8 @@ void setlayout(const Arg *arg) {
 }
 
 /* arg > 1.0 will set mfact absolutely */
-void setmfact(const Arg *arg) {
+void
+setmfact(const Arg *arg) {
     float f;
 
     if (!arg || !selmon || !selmon->lt[selmon->sellt]->arrange)
@@ -2604,7 +2668,8 @@ void setmfact(const Arg *arg) {
     arrange(selmon);
 }
 
-void setmon(Client *c, Monitor *m, uint32_t newtags) {
+void
+setmon(Client *c, Monitor *m, uint32_t newtags) {
     Monitor *oldmon = c->mon;
 
     if (oldmon == m)
@@ -2628,7 +2693,8 @@ void setmon(Client *c, Monitor *m, uint32_t newtags) {
     focusclient(focustop(selmon), 1);
 }
 
-void setpsel(struct wl_listener *listener, void *data) {
+void
+setpsel(struct wl_listener *listener, void *data) {
     /* This event is raised by the seat when a client wants to set the
      * selection, usually when the user copies something. wlroots allows
      * compositors to ignore such requests if they so choose, but in dwl we
