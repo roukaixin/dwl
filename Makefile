@@ -15,8 +15,8 @@ LDLIBS    = `$(PKG_CONFIG) --libs $(PKGS)` $(LIBS)
 
 all: dwl
 dwl: dwl.o util.o
-	$(CC) dwl.o util.o $(LDLIBS) $(LDFLAGS) $(DWL_CFLAGS) -o $@
-dwl.o: dwl.c config.mk config.h client.h cursor-shape-v1-protocol.h pointer-constraints-unstable-v1-protocol.h wlr-layer-shell-unstable-v1-protocol.h xdg-shell-protocol.h
+	$(CC) dwl.o util.o $(DWL_CFLAGS) $(LDFLAGS) $(LDLIBS) -o $@
+dwl.o: dwl.c client.h config.h config.mk cursor-shape-v1-protocol.h pointer-constraints-unstable-v1-protocol.h wlr-layer-shell-unstable-v1-protocol.h xdg-shell-protocol.h
 util.o: util.c util.h
 
 # wayland-scanner is a tool which generates C headers and rigging for Wayland
@@ -66,4 +66,4 @@ uninstall:
 
 .SUFFIXES: .c .o
 .c.o:
-	$(CC) $(CPPFLAGS) $(DWL_CFLAGS) -c $<
+	$(CC) $(CPPFLAGS) $(DWL_CFLAGS) -o $@ -c $<

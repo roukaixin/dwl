@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `21205f2f`(24-5-31 at 上午7:48)，描述：`make sure clients share the same layer on floating layout`
+更新最新代码 `c2e7350f`(24-6-13 at 上午7:48)，描述：`Make sure toplevel_from_wlr_surface is called with a valid surface pointer`
 
 # 安装
 
