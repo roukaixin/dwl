@@ -43,6 +43,28 @@ static const char *const autostart[] = {
         "mako", NULL,
         NULL /* terminate */
 };
+/* wlroots */
+static const Env envs[] = {
+        /* variable			value */
+        {"LANG", "zh_CN.UTF-8"},
+        {"LANGUAGE", "zh_CN:en_US"},
+        {"XDG_CURRENT_DESKTOP", "dwl"},
+        {"GDK_BACKEND", "wayland"},
+        {"QT_QPA_PLATFORM", "wayland"},
+        {"SDL_VIDEODRIVER", "wayland"},
+        {"CLUTTER_BACKEND", "wayland"},
+        {"XDG_SESSION_TYPE", "wayland"},
+        {"XDG_SESSION_DESKTOP", "dwl"},
+        {"QT_AUTO_SCREEN_SCALE_FACTOR", "1"},
+        {"QT_QPA_PLATFORM", "wayland"},
+        {"QT_WAYLAND_DISABLE_WINDOWDECORATION", "1"},
+        {"QT_QPA_PLATFORMTHEME", "qt5ct"},
+        {"GBM_BACKEND", "nvidia-drm"},
+        {"__GLX_VENDOR_LIBRARY_NAME", "nvidia"},
+        {"LIBVA_DRIVER_NAME", "nvidia"},
+        {"NVD_BACKEND", "direct"},
+        {"WLR_DRM_NO_ATOMIC", "1"},
+};
 
 static const Rule rules[] = {
         /* app_id             title       tags mask     isfloating   monitor */
