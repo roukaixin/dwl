@@ -24,6 +24,7 @@ static pixman_color_t normbarfg = { 0xbbbb, 0xbbbb, 0xbbbb, 0xffU };
 static pixman_color_t normbarbg = { 0x3333, 0x3333, 0x3333, 0xc000 };
 static pixman_color_t selbarfg  = { 0xeeee, 0xeeee, 0xeeee, 0xffU };
 static pixman_color_t selbarbg  = { 0x3333, 0x3333, 0x3333, 0xc000 };
+static pixman_color_t sel_underline_fg  = { 0x7777, 0x9999, 0xAAAA, 0xffU };
 
 /* tagging - TAGCOUNT must be no greater than 31 */
 static char *tags[] = { "1", "2", "3", "4", "5", "6", "7", "8", "9" };

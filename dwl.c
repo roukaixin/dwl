@@ -1645,6 +1645,7 @@ drawbar(Monitor *mon) {
                   urg & 1 << i ? &selbarfg : (sel ? &selbarbg : &normbarbg)
         );
 
+        // occ & 1 << i : 当前标签下是否有 client
         if (sel) {
             draw_rect(pix,
                       (int16_t) (x + 2),
@@ -1652,7 +1653,7 @@ drawbar(Monitor *mon) {
                       w + mon->lrpad - 4,
                       boxw,
                       sel,
-                      urg & 1 << i ? &selbarbg : (sel ? &selbarfg : &normbarfg)
+                      &sel_underline_fg
             );
         }
 
