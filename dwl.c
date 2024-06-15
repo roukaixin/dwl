@@ -2079,7 +2079,8 @@ void maplayersurfacenotify(struct wl_listener *listener, void *data) {
     motionnotify(0, NULL, 0, 0, 0, 0);
 }
 
-void mapnotify(struct wl_listener *listener, void *data) {
+void
+mapnotify(struct wl_listener *listener, void *data) {
     /* Called when the surface is mapped, or ready to display on-screen. */
     Client *p = NULL;
     Client *w, *c = wl_container_of(listener, c, map);
@@ -2118,13 +2119,18 @@ void mapnotify(struct wl_listener *listener, void *data) {
     }
 
     /* Initialize client geometry with room for border */
-    client_set_tiled(c, WLR_EDGE_TOP | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT |
-                        WLR_EDGE_RIGHT);
+    client_set_tiled(c, WLR_EDGE_TOP | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
     c->geom.width += 2 * c->bw;
     c->geom.height += 2 * c->bw;
 
     /* Insert this client into client lists. */
-    wl_list_insert(&clients, &c->link);
+    if (clients.prev) {
+        // tile at the bottom
+        wl_list_insert(clients.prev, &c->link);
+    }
+    else {
+        wl_list_insert(&clients, &c->link);
+    }
     wl_list_insert(&fstack, &c->flink);
 
     /* Set initial monitor, tags, floating status, and focus:
@@ -2488,13 +2494,15 @@ void requeststartdrag(struct wl_listener *listener, void *data) {
         wlr_data_source_destroy(event->drag->source);
 }
 
-void requestmonstate(struct wl_listener *listener, void *data) {
+void
+requestmonstate(struct wl_listener *listener, void *data) {
     struct wlr_output_event_request_state *event = data;
     wlr_output_commit_state(event->output, event->state);
     updatemons(NULL, NULL);
 }
 
-void resize(Client *c, struct wlr_box geo, int interact) {
+void
+resize(Client *c, struct wlr_box geo, int interact) {
     struct wlr_box *bbox = interact ? &sgeom : &c->mon->w;
     struct wlr_box clip;
     client_set_bounds(c, geo.width, geo.height);
