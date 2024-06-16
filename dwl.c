@@ -275,7 +275,7 @@ struct Monitor {
     float mfact;
     int gamma_lut_changed;
     int nmaster;
-    int showbar, oldshowbar;
+    int showbar, fullscreenshowbar;
     char ltsymbol[16];
     struct fcft_font *font;
     int lrpad;
@@ -3442,12 +3442,12 @@ togglefullscreen(const Arg *arg)
     }
 
     if (sel->isfullscreen) {
-        mon->oldshowbar = mon->showbar;
+        mon->fullscreenshowbar = mon->showbar;
         if (mon->showbar) {
             togglebar(0);
         }
     } else {
-        if (mon->oldshowbar) {
+        if (mon->fullscreenshowbar) {
             togglebar(0);
         }
     }
