@@ -275,7 +275,7 @@ struct Monitor {
     float mfact;
     int gamma_lut_changed;
     int nmaster;
-    int showbar;
+    int showbar, oldshowbar;
     char ltsymbol[16];
     struct fcft_font *font;
     int lrpad;
@@ -736,7 +736,9 @@ applyrules(Client *c)
 void
 arrange(Monitor *m)
 {
-    Client *c;
+    LayerSurface *l;
+    Client *c, *sel = focustop(m);
+    int i;
 
     if (!m->wlr_output->enabled)
         return;
@@ -767,6 +769,23 @@ arrange(Monitor *m)
                                   : c->scene->node.parent);
     }
 
+    if (sel && sel->isfullscreen && VISIBLEON(sel, m)) {
+        for (i = 2; i > ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND; i--) {
+            wl_list_for_each(l, &sel->mon->layers[i], link) wlr_scene_node_set_enabled(&l->scene->node, 0);
+        }
+
+        wl_list_for_each(c, &clients, link) {
+            if (c->mon != m)
+                continue;
+            wlr_scene_node_set_enabled(&c->scene->node, (sel->isfullscreen && c == sel) || !sel->isfullscreen);
+        }
+    }
+
+    if (!sel || (!sel->isfullscreen && VISIBLEON(sel, m))) {
+        for (i = 2; i > ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND; i--) {
+            wl_list_for_each(l, &m->layers[i], link) wlr_scene_node_set_enabled(&l->scene->node, 1);
+        }
+    }
 
     if (m->lt[m->sellt]->arrange)
         m->lt[m->sellt]->arrange(m);
@@ -1386,6 +1405,7 @@ createmon(struct wl_listener *listener, void *data)
     m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
     m->scene_buffer->point_accepts_input = bar_accepts_input;
     m->showbar = showbar;
+    m->oldshowbar = 0;
     updatebar(m);
 
     wl_list_insert(&mons, &m->link);
@@ -1773,11 +1793,11 @@ draw_rect(pixman_image_t *pix, int16_t x, int16_t y, uint16_t w,
 }
 
 void
-drawbar(Monitor *mon)
+drawbar(Monitor *m)
 {
     int x, w, status_w = 0;
     int sel;
-    int boxs = mon->font->height / 9;
+    int boxs = m->font->height / 9;
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
@@ -1786,34 +1806,34 @@ drawbar(Monitor *mon)
     Buffer *buf;
 
     // 显示屏不存在或者不显示 bar，直接退出
-    if (!mon || !mon->showbar) {
+    if (!m || !m->showbar) {
         return;
     }
 
-    stride = mon->b.width * 4;
-    size = stride * mon->b.height;
+    stride = m->b.width * 4;
+    size = stride * m->b.height;
 
     // 分配 bar 内存
     buf = ecalloc(1, sizeof(Buffer) + size);
     buf->stride = stride;
-    wlr_buffer_init(&buf->base, &buffer_impl, mon->b.width, mon->b.height);
+    wlr_buffer_init(&buf->base, &buffer_impl, m->b.width, m->b.height);
 
-    pix = pixman_image_create_bits(PIXMAN_a8r8g8b8, mon->b.width, mon->b.height, buf->data, (int) stride);
+    pix = pixman_image_create_bits(PIXMAN_a8r8g8b8, m->b.width, m->b.height, buf->data, (int) stride);
 
     /* draw status first so it can be overdrawn by tags later */
-    if (mon == selmon) {
+    if (m == selmon) {
         if (stext[0] == '\0') {
             strncpy(stext, "dwl-"
             VERSION, sizeof(stext));
         }
         // status 宽度
-        status_w = TEXTW(mon, stext) - mon->lrpad;
+        status_w = TEXTW(m, stext) - m->lrpad;
         drwl_text(pix,
-                  mon->font,
-                  mon->b.width - status_w,
+                  m->font,
+                  m->b.width - status_w,
                   0,
                   status_w,
-                  mon->b.height,
+                  m->b.height,
                   0,
                   stext,
                   &normbarfg,
@@ -1823,7 +1843,7 @@ drawbar(Monitor *mon)
 
 
     wl_list_for_each(c, &clients, link) {
-        if (c->mon != mon)
+        if (c->mon != m)
             continue;
         occ |= c->tags == TAGMASK ? 0 : c->tags;
         if (c->isurgent)
@@ -1833,18 +1853,18 @@ drawbar(Monitor *mon)
     x = 0;
     for (i = 0; i < LENGTH(tags); i++) {
         // 是否选中当前 tag
-        sel = (int) mon->tagset[mon->seltags] & 1 << i;
+        sel = (int) m->tagset[m->seltags] & 1 << i;
         if (!(occ & 1 << i || sel))
             continue;
         // 一个 tag 宽度
-        w = TEXTW(mon, tags[i]);
+        w = TEXTW(m, tags[i]);
         drwl_text(pix,
-                  mon->font,
+                  m->font,
                   x,
                   0,
                   w,
-                  mon->b.height,
-                  mon->lrpad / 2,
+                  m->b.height,
+                  m->lrpad / 2,
                   tags[i],
                   urg & 1 << i ? &selbarbg : (sel ? &selbarfg : &normbarfg),
                   urg & 1 << i ? &selbarfg : (sel ? &selbarbg : &normbarbg)
@@ -1854,8 +1874,8 @@ drawbar(Monitor *mon)
         if (sel) {
             draw_rect(pix,
                       (int16_t) (x + 2),
-                      (int16_t) (mon->b.height - boxw),
-                      w + mon->lrpad - 4,
+                      (int16_t) (m->b.height - boxw),
+                      w + m->lrpad - 4,
                       boxw,
                       sel,
                       &sel_underline_fg
@@ -1866,22 +1886,22 @@ drawbar(Monitor *mon)
     }
 
     // 绘制布局图标
-    w = TEXTW(mon, mon->ltsymbol);
-    x = drwl_text(pix, mon->font, x, 0, w, mon->b.height, mon->lrpad / 2, mon->ltsymbol, &normbarfg, &normbarbg);
+    w = TEXTW(m, m->ltsymbol);
+    x = drwl_text(pix, m->font, x, 0, w, m->b.height, m->lrpad / 2, m->ltsymbol, &normbarfg, &normbarbg);
 
     // 绘制 title
-    if ((w = mon->b.width - status_w - x) > mon->b.height) {
-        if ((c = focustop(mon)) != NULL) {
+    if ((w = m->b.width - status_w - x) > m->b.height) {
+        if ((c = focustop(m)) != NULL) {
             drwl_text(pix,
-                      mon->font,
+                      m->font,
                       x,
                       0,
                       w,
-                      mon->b.height,
-                      mon->lrpad / 2,
+                      m->b.height,
+                      m->lrpad / 2,
                       client_get_title(c),
-                      mon == selmon ? &selbarfg : &normbarfg,
-                      (mon == selmon && c) ? &selbarbg : &normbarbg
+                      m == selmon ? &selbarfg : &normbarfg,
+                      (m == selmon && c) ? &selbarbg : &normbarbg
             );
             if (c && c->isfloating) {
                 drwl_rect(pix,
@@ -1890,20 +1910,20 @@ drawbar(Monitor *mon)
                           boxw,
                           boxw,
                           0,
-                          mon == selmon ? &selbarfg : &normbarfg);
+                          m == selmon ? &selbarfg : &normbarfg);
             }
         } else {
-            drwl_rect(pix, (int16_t) x, 0, w, mon->b.height, 1, &normbarbg);
+            drwl_rect(pix, (int16_t) x, 0, w, m->b.height, 1, &normbarbg);
         }
     }
 
     pixman_image_unref(pix);
-    wlr_scene_buffer_set_dest_size(mon->scene_buffer, mon->b.real_width, mon->b.real_height);
+    wlr_scene_buffer_set_dest_size(m->scene_buffer, m->b.real_width, m->b.real_height);
     wlr_scene_node_set_position(
-            &mon->scene_buffer->node, mon->m.x + sidepad,
-            mon->m.y + (topbar ? vertpad : mon->m.height - mon->b.real_height - vertpad)
+            &m->scene_buffer->node, m->m.x + sidepad,
+            m->m.y + (topbar ? vertpad : m->m.height - m->b.real_height - vertpad)
     );
-    wlr_scene_buffer_set_buffer(mon->scene_buffer, &buf->base);
+    wlr_scene_buffer_set_buffer(m->scene_buffer, &buf->base);
     wlr_buffer_drop(&buf->base);
 }
 
@@ -3416,8 +3436,21 @@ void
 togglefullscreen(const Arg *arg)
 {
     Client *sel = focustop(selmon);
-    if (sel)
+    Monitor *mon = sel->mon;
+    if (sel) {
         setfullscreen(sel, !sel->isfullscreen);
+    }
+
+    if (sel->isfullscreen) {
+        mon->oldshowbar = mon->showbar;
+        if (mon->showbar) {
+            togglebar(0);
+        }
+    } else {
+        if (mon->oldshowbar) {
+            togglebar(0);
+        }
+    }
 }
 
 void

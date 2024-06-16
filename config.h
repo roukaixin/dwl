@@ -15,7 +15,7 @@ static const float bordercolor[] = COLOR(0x444444ff);
 static const float focuscolor[] = COLOR(0x005577ff);
 static const float urgentcolor[] = COLOR(0xff0000ff);
 /* This conforms to the xdg-protocol. Set the alpha to zero to restore the old behavior */
-static const float fullscreen_bg[] = {0.1f, 0.1f, 0.1f, 1.0f}; /* You can also use glsl colors */
+static const float fullscreen_bg[] = {0.1f, 0.1f, 0.1f, 0.0f}; /* You can also use glsl colors */
 
 /* bar */
 static const int showbar = 1; /* 0 means no bar */
@@ -30,7 +30,7 @@ static pixman_color_t selbarbg = {0x3333, 0x3333, 0x3333, 0xc000};
 static pixman_color_t sel_underline_fg = {0x7777, 0x9999, 0xAAAA, 0xffU};
 
 /* tagging - TAGCOUNT must be no greater than 31 */
-static char *tags[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
+static char *tags[] = { "󰎤", "󰎧", "󰎪", "󰎭", "󰎱", "󰎳", "󰎶", "󰎹", "󰎼" };
 
 /* logging */
 static int log_level = WLR_ERROR;
@@ -227,7 +227,7 @@ static const Key keys[] = {
 
 static const Button buttons[] = {
         {ClkLtSymbol, 0,    BTN_LEFT,   setlayout,      {.v = &layouts[0]}},
-        {ClkLtSymbol, 0,    BTN_RIGHT,  setlayout,      {.v = &layouts[2]}},
+        {ClkLtSymbol, 0,    BTN_RIGHT,  setlayout,      {.v = &layouts[1]}},
         {ClkTitle,    0,    BTN_MIDDLE, zoom,           {0}},
         {ClkStatus,   0,    BTN_MIDDLE, spawn,          {.v = termcmd}},
         {ClkClient, MODKEY, BTN_LEFT,   moveresize,     {.ui = CurMove}},
