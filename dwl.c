@@ -1085,6 +1085,7 @@ cleanupmon(struct wl_listener *listener, void *data)
         wl_list_for_each_safe(l, tmp, &m->layers[i], link)wlr_layer_surface_v1_destroy(l->layer_surface);
     }
 
+    // 销毁 fcft
     fcft_destroy(m->font);
 
     wl_list_remove(&m->destroy.link);
@@ -1789,10 +1790,10 @@ drawbar(Monitor *mon)
         return;
     }
 
-
     stride = mon->b.width * 4;
     size = stride * mon->b.height;
 
+    // 分配 bar 内存
     buf = ecalloc(1, sizeof(Buffer) + size);
     buf->stride = stride;
     wlr_buffer_init(&buf->base, &buffer_impl, mon->b.width, mon->b.height);

@@ -6,9 +6,9 @@
 /* appearance */
 static const int sloppyfocus = 1;  /* focus follows mouse */
 static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
-static const int smartgaps                 = 0;  /* 1 means no outer gap when there is only one window */
-static int gaps                            = 1;  /* 1 means gaps between windows are added */
-static const unsigned int gappx            = 12; /* gap pixel between windows */
+static const int smartgaps = 0;  /* 1 means no outer gap when there is only one window */
+static int gaps = 1;  /* 1 means gaps between windows are added */
+static const unsigned int gappx = 12; /* gap pixel between windows */
 static const unsigned int borderpx = 1;  /* border pixel of windows */
 static const float rootcolor[] = COLOR(0x333333c0);
 static const float bordercolor[] = COLOR(0x444444ff);
@@ -49,24 +49,24 @@ static const char *const autostart[] = {
 /* wlroots */
 static const Env envs[] = {
         /* variable			value */
-        {"LANG", "zh_CN.UTF-8"},
-        {"LANGUAGE", "zh_CN:en_US"},
-        {"XDG_CURRENT_DESKTOP", "dwl"},
-        {"GDK_BACKEND", "wayland"},
-        {"QT_QPA_PLATFORM", "wayland"},
-        {"SDL_VIDEODRIVER", "wayland"},
-        {"CLUTTER_BACKEND", "wayland"},
-        {"XDG_SESSION_TYPE", "wayland"},
-        {"XDG_SESSION_DESKTOP", "dwl"},
-        {"QT_AUTO_SCREEN_SCALE_FACTOR", "1"},
-        {"QT_QPA_PLATFORM", "wayland"},
+        {"LANG",                                "zh_CN.UTF-8"},
+        {"LANGUAGE",                            "zh_CN:en_US"},
+        {"XDG_CURRENT_DESKTOP",                 "dwl"},
+        {"GDK_BACKEND",                         "wayland"},
+        {"QT_QPA_PLATFORM",                     "wayland"},
+        {"SDL_VIDEODRIVER",                     "wayland"},
+        {"CLUTTER_BACKEND",                     "wayland"},
+        {"XDG_SESSION_TYPE",                    "wayland"},
+        {"XDG_SESSION_DESKTOP",                 "dwl"},
+        {"QT_AUTO_SCREEN_SCALE_FACTOR",         "1"},
+        {"QT_QPA_PLATFORM",                     "wayland"},
         {"QT_WAYLAND_DISABLE_WINDOWDECORATION", "1"},
-        {"QT_QPA_PLATFORMTHEME", "qt5ct"},
-        {"GBM_BACKEND", "nvidia-drm"},
-        {"__GLX_VENDOR_LIBRARY_NAME", "nvidia"},
-        {"LIBVA_DRIVER_NAME", "nvidia"},
-        {"NVD_BACKEND", "direct"},
-        {"WLR_DRM_NO_ATOMIC", "1"},
+        {"QT_QPA_PLATFORMTHEME",                "qt5ct"},
+        {"GBM_BACKEND",                         "nvidia-drm"},
+        {"__GLX_VENDOR_LIBRARY_NAME",           "nvidia"},
+        {"LIBVA_DRIVER_NAME",                   "nvidia"},
+        {"NVD_BACKEND",                         "direct"},
+        {"WLR_DRM_NO_ATOMIC",                   "1"},
 };
 
 static const Rule rules[] = {

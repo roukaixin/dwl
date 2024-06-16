@@ -26,7 +26,8 @@ static const uint8_t utf8d[] = {
 };
 
 static inline uint32_t
-utf8decode(uint32_t *state, uint32_t *codep, uint8_t byte) {
+utf8decode(uint32_t *state, uint32_t *codep, uint8_t byte)
+{
     uint32_t type = utf8d[byte];
 
     *codep = (*state != UTF8_ACCEPT) ?
@@ -40,30 +41,32 @@ utf8decode(uint32_t *state, uint32_t *codep, uint8_t byte) {
 static void
 drwl_rect(pixman_image_t *pix,
           int16_t x, int16_t y, uint16_t w, uint16_t h,
-          int filled, pixman_color_t *bg) {
+          int filled, pixman_color_t *bg)
+{
     if (filled)
         pixman_image_fill_rectangles(PIXMAN_OP_SRC, pix, bg, 1,
                                      &(pixman_rectangle16_t) {x, y, w, h});
     else
         pixman_image_fill_rectangles(PIXMAN_OP_SRC, pix, bg, 4,
                                      (pixman_rectangle16_t[4]) {
-                                             {x,         y,         w, 1},
-                                             {x,         y + h - 1, w, 1},
-                                             {x,         y,         1, h},
-                                             {x + w - 1, y,         1, h}});
+                                             {x,                     y,                     w, 1},
+                                             {x,                     (int16_t) (y + h - 1), w, 1},
+                                             {x,                     y,                     1, h},
+                                             {(int16_t) (x + w - 1), y,                     1, h}});
 }
 
 static int
 drwl_text(pixman_image_t *pix, struct fcft_font *font,
           int x, int y, unsigned int w, unsigned int h,
           unsigned int lpad, const char *text,
-          pixman_color_t *fg, pixman_color_t *bg) {
+          pixman_color_t *fg, pixman_color_t *bg)
+{
     int ty;
     int render = x || y || w || h;
     long x_kern;
     uint32_t cp, last_cp = 0;
     uint32_t state = UTF8_ACCEPT;
-    pixman_image_t *fg_pix = NULL;
+    pixman_image_t * fg_pix = NULL;
     const struct fcft_glyph *glyph, *eg;
     int noellipsis = 0;
 
@@ -76,9 +79,9 @@ drwl_text(pixman_image_t *pix, struct fcft_font *font,
         fg_pix = pixman_image_create_solid_fill(fg);
 
         if (bg)
-            drwl_rect(pix, x, y, w, h, 1, bg);
+            drwl_rect(pix, (int16_t) x, (int16_t) y, w, h, 1, bg);
 
-        x += lpad;
+        x += (int) lpad;
         w -= lpad;
     }
 
@@ -98,12 +101,11 @@ drwl_text(pixman_image_t *pix, struct fcft_font *font,
             fcft_kerning(font, last_cp, cp, &x_kern, NULL);
         last_cp = cp;
 
-        ty = y + (h - font->height) / 2 + font->ascent;
+        ty = (int) (y - (h - font->height) / 2 + font->ascent);
 
         /* draw ellipsis if remaining text doesn't fit */
         if (!noellipsis && x_kern + glyph->advance.x + eg->advance.x > w && *(p + 1) != '\0') {
-            if (drwl_text(NULL, font, 0, 0, 0, 0, 0, p, NULL, NULL)
-                - glyph->advance.x < eg->advance.x) {
+            if (drwl_text(NULL, font, 0, 0, 0, 0, 0, p, NULL, NULL) - glyph->advance.x < eg->advance.x) {
                 noellipsis = 1;
             } else {
                 w -= eg->advance.x;
@@ -116,7 +118,7 @@ drwl_text(pixman_image_t *pix, struct fcft_font *font,
         if ((x_kern + glyph->advance.x) > w)
             break;
 
-        x += x_kern;
+        x += (int) x_kern;
 
         if (render && pixman_image_get_format(glyph->pix) == PIXMAN_a8r8g8b8)
             // pre-rendered glyphs (eg. emoji)
@@ -135,5 +137,5 @@ drwl_text(pixman_image_t *pix, struct fcft_font *font,
     if (render)
         pixman_image_unref(fg_pix);
 
-    return x + (render ? w : 0);
+    return x + (render ? (int) w : 0);
 }
