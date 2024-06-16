@@ -544,6 +544,8 @@ static void tagmon(const Arg *arg);
 
 static void tile(Monitor *m);
 
+static void grid(Monitor *m);
+
 static void togglebar(const Arg *arg);
 
 static void togglefloating(const Arg *arg);
@@ -3317,7 +3319,80 @@ tile(Monitor *m)
     }
 }
 
+void
+grid(Monitor *m)
+{
+    // n client 数量
+    unsigned int i = 0, n = 0;
+    // client x
+    unsigned int cx, cy, cw, ch;
+    unsigned int dx;
+    unsigned int cols, rows, last_row_cols;
+    Client *c;
 
+    // 获取多少个 client
+    wl_list_for_each(c, &clients, link) {
+        // VISIBLEON 在屏幕上可见
+        if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen) {
+            n++;
+        }
+    }
+
+    if (n == 0) return;
+
+    if (n > 2) {
+        // 计算有多少列（cols）
+        for (cols = 0; cols <= n / 2; cols++)
+            if (cols * cols >= n)
+                break;
+        // 计算有多少行（rows）
+        rows = (cols && (cols - 1) * cols >= n) ? cols - 1 : cols;
+        cw = (m->w.width - 2 * gappx - (cols - 1) * gappx) / cols;
+        ch = (m->w.height - 2 * gappx - (rows - 1) * gappx) / rows;
+        last_row_cols = n % cols;
+    }
+
+    wl_list_for_each(c, &clients, link) {
+        // VISIBLEON 在屏幕上可见
+        if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen) {
+            if (i >= n) {
+                return;
+            }
+            if (n == 1) {
+                // 只有一个 client ，显示在中间
+                cw = (int) ((m->w.width - 2 * gappx) * 0.7);
+                ch = (int) ((m->w.height - 2 * gappx) * 0.65);
+                cx = m->w.x + (m->w.width - cw) / 2;
+                cy = m->w.y + (m->w.height - ch) / 2;
+            } else if (n == 2) {
+                cw = (m->w.width - 2 * gappx - gappx) / 2;
+                ch = (int) ((m->w.height - 2 * gappx) * 0.65);
+                cx = m->w.x + i * (cw + gappx);
+                cy = m->w.y + (m->w.height - ch) / 2;
+            } else {
+                cx = m->w.x + (i % cols) * (cw + gappx);
+                cy = m->w.y + (i / cols) * (ch + gappx);
+                if (last_row_cols) {
+                    dx = (m->w.width - last_row_cols * cw - (last_row_cols - 1) * gappx) / 2 - gappx;
+                    if (i >= n - last_row_cols) {
+                        cx += dx;
+                    }
+                }
+
+            }
+            resize(c,
+                   (struct wlr_box) {
+                           .x      = (int) (cx + gappx),
+                           .y      = (int) (cy + gappx),
+                           .width  = (int) (cw - 2 * c->bw),
+                           .height = (int) (ch - 2 * c->bw)
+                   },
+                   0
+            );
+            i++;
+        }
+    }
+}
 
 void
 togglebar(const Arg *arg)
