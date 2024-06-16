@@ -258,6 +258,10 @@ struct Monitor {
     struct wlr_box w;           /* window area, layout-relative */
     struct wl_list layers[4]; /* LayerSurface.link */
     const Layout *lt[2];
+    /**
+     * 是否启用间距
+     */
+    int gaps;
     Pertag *pertag;
     /**
      * 激活的 tag
@@ -467,13 +471,16 @@ static void mapnotify(struct wl_listener *listener, void *data);
 
 static void maximizenotify(struct wl_listener *listener, void *data);
 
+/**
+ * 单片镜布局
+ * @param m
+ */
 static void monocle(Monitor *m);
 
 static void motionabsolute(struct wl_listener *listener, void *data);
 
 static void motionnotify(uint32_t time, struct wlr_input_device *device,
-                         double sx, double sy, double sx_unaccel,
-                         double sy_unaccel);
+                         double dx, double dy, double dx_unaccel, double dy_unaccel);
 
 static void motionrelative(struct wl_listener *listener, void *data);
 
@@ -1340,6 +1347,8 @@ createmon(struct wl_listener *listener, void *data)
 
     wlr_output_state_init(&state);
     /* Initialize monitor state using configured rules */
+    m->gaps = gaps;
+
     m->tagset[0] = m->tagset[1] = 1;
     for (r = monrules; r < END(monrules); r++) {
         if (!r->name || strstr(wlr_output->name, r->name)) {
@@ -2389,8 +2398,8 @@ motionabsolute(struct wl_listener *listener, void *data)
 }
 
 void
-motionnotify(uint32_t time, struct wlr_input_device *device, double dx,
-             double dy, double dx_unaccel, double dy_unaccel)
+motionnotify(uint32_t time, struct wlr_input_device *device,
+             double dx, double dy, double dx_unaccel, double dy_unaccel)
 {
     double sx = 0, sy = 0, sx_confined, sy_confined;
     Client *c = NULL, *w = NULL;
@@ -3250,7 +3259,7 @@ void
 tile(Monitor *m)
 {
     // master_w : master 宽度、master_y : master y轴
-    unsigned int master_w, master_y, ty;
+    unsigned int h, r, e = m->gaps, master_w, master_y, stack_y;
     // n : 表示平铺的窗口数量
     int i, n = 0;
     Client *c;
@@ -3264,43 +3273,51 @@ tile(Monitor *m)
 
     if (n == 0)
         return;
+    if (smartgaps == n)
+        e = 0;
 
     if (n > m->nmaster)
-        master_w = m->nmaster ? ROUND(m->w.width * m->mfact) : 0;
+        master_w = m->nmaster ? ROUND((m->w.width + gappx * e) * m->mfact) : 0;
     else
-        master_w = m->w.width;
-    master_y = 0;
-    ty = 0;
+        master_w = m->w.width - 2 * gappx * e + gappx * e;
+    master_y = gappx * e;
+    stack_y = gappx * e;
     i = 0;
     wl_list_for_each(c, &clients, link) {
         if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
             continue;
         if (i < m->nmaster) {
+            r = MIN(n, m->nmaster) - i;
+            h = (m->w.height - master_y - gappx * e - gappx * e * (r - 1)) / r;
             resize(c,
                    (struct wlr_box) {
-                           .x      = m->w.x,
+                           .x      = m->w.x + (int) (gappx * e),
                            .y      = m->w.y + (int) master_y,
-                           .width  = (int) master_w,
-                           .height = (m->w.height - (int) master_y) / (MIN(n, m->nmaster) - i)
+                           .width  = (int) (master_w - gappx * e),
+                           .height = (int) h
                    },
                    0
             );
-            master_y += c->geom.height;
+            master_y += c->geom.height + gappx * e;
         } else {
+            r = n - i;
+            h = (m->w.height - stack_y - gappx * e - gappx * e * (r - 1)) / r;
             resize(c,
                    (struct wlr_box) {
-                           .x      = m->w.x + (int) master_w,
-                           .y      = m->w.y + (int) ty,
-                           .width  = m->w.width - (int) master_w,
-                           .height = (m->w.height - (int) ty) / (n - i)
+                           .x      =(int) (m->w.x + master_w + gappx * e),
+                           .y      = m->w.y + (int) stack_y,
+                           .width  = (int) (m->w.width - master_w - 2 * gappx * e),
+                           .height = (int) h
                    },
                    0
             );
-            ty += c->geom.height;
+            stack_y += c->geom.height + gappx * e;
         }
         i++;
     }
 }
+
+
 
 void
 togglebar(const Arg *arg)
@@ -3594,7 +3611,7 @@ view(const Arg *arg)
         if (arg->ui == TAGMASK)
             selmon->pertag->curtag = 0;
         else {
-            for (i = 0; !(arg->ui & 1 << i); i++) ;
+            for (i = 0; !(arg->ui & 1 << i); i++);
             selmon->pertag->curtag = i + 1;
         }
     } else {
@@ -3607,7 +3624,7 @@ view(const Arg *arg)
     selmon->mfact = selmon->pertag->mfacts[selmon->pertag->curtag];
     selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
     selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
-    selmon->lt[selmon->sellt^1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt^1];
+    selmon->lt[selmon->sellt ^ 1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt ^ 1];
     selmon->showbar = selmon->pertag->showbars[selmon->showbar];
 
     focusclient(focustop(selmon), 1);
