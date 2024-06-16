@@ -1405,7 +1405,7 @@ createmon(struct wl_listener *listener, void *data)
     m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
     m->scene_buffer->point_accepts_input = bar_accepts_input;
     m->showbar = showbar;
-    m->oldshowbar = 0;
+    m->fullscreenshowbar = 0;
     updatebar(m);
 
     wl_list_insert(&mons, &m->link);
@@ -3436,11 +3436,12 @@ void
 togglefullscreen(const Arg *arg)
 {
     Client *sel = focustop(selmon);
-    Monitor *mon = sel->mon;
-    if (sel) {
-        setfullscreen(sel, !sel->isfullscreen);
+    Monitor *mon;
+    if (sel == NULL){
+        return;
     }
-
+    mon = sel->mon;
+    setfullscreen(sel, !sel->isfullscreen);
     if (sel->isfullscreen) {
         mon->fullscreenshowbar = mon->showbar;
         if (mon->showbar) {
