@@ -257,6 +257,9 @@ struct Monitor {
     } b; /* bar area */
     struct wlr_box w;           /* window area, layout-relative */
     struct wl_list layers[4]; /* LayerSurface.link */
+    /**
+     * 布局数组
+     */
     const Layout *lt[2];
     /**
      * 是否启用间距
@@ -267,6 +270,9 @@ struct Monitor {
      * 激活的 tag
      */
     unsigned int seltags;
+    /**
+     * 选择布局
+     */
     unsigned int sellt;
     /**
      * 保存当前 tag 和 上一个 tag信息
@@ -276,6 +282,9 @@ struct Monitor {
     int gamma_lut_changed;
     int nmaster;
     int showbar, fullscreenshowbar;
+    /**
+     * 布局图标
+     */
     char ltsymbol[16];
     struct fcft_font *font;
     int lrpad;
@@ -750,9 +759,9 @@ arrange(Monitor *m)
         }
     }
 
-    wlr_scene_node_set_enabled(&m->fullscreen_bg->node,
-                               (c = focustop(m)) && c->isfullscreen);
+    wlr_scene_node_set_enabled(&m->fullscreen_bg->node, (c = focustop(m)) && c->isfullscreen);
 
+    // symbol : 布局图标
     strncpy(m->ltsymbol, m->lt[m->sellt]->symbol, LENGTH(m->ltsymbol));
 
     /* We move all clients (except fullscreen and unmanaged) to LyrTile while
@@ -783,21 +792,25 @@ arrange(Monitor *m)
 
     if (!sel || (!sel->isfullscreen && VISIBLEON(sel, m))) {
         for (i = 2; i > ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND; i--) {
-            wl_list_for_each(l, &m->layers[i], link) wlr_scene_node_set_enabled(&l->scene->node, 1);
+            wl_list_for_each(l, &m->layers[i], link) {
+                wlr_scene_node_set_enabled(&l->scene->node, 1);
+            }
         }
     }
 
-    if (m->lt[m->sellt]->arrange)
+    if (m->lt[m->sellt]->arrange) {
+        // 调用布局的方法。例如：tile, grid
         m->lt[m->sellt]->arrange(m);
+    }
     motionnotify(0, NULL, 0, 0, 0, 0);
     checkidleinhibitor(NULL);
 }
 
 void
-arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area,
-             int exclusive)
+arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area, int exclusive)
 {
     LayerSurface *l;
+    // monitor area
     struct wlr_box full_area = m->m;
 
     wl_list_for_each(l, list, link) {
@@ -806,10 +819,8 @@ arrangelayer(Monitor *m, struct wl_list *list, struct wlr_box *usable_area,
         if (exclusive != (layer_surface->current.exclusive_zone > 0))
             continue;
 
-        wlr_scene_layer_surface_v1_configure(l->scene_layer, &full_area,
-                                             usable_area);
-        wlr_scene_node_set_position(&l->popups->node, l->scene->node.x,
-                                    l->scene->node.y);
+        wlr_scene_layer_surface_v1_configure(l->scene_layer, &full_area, usable_area);
+        wlr_scene_node_set_position(&l->popups->node, l->scene->node.x, l->scene->node.y);
         l->geom.x = l->scene->node.x;
         l->geom.y = l->scene->node.y;
     }
@@ -850,16 +861,13 @@ arrangelayers(Monitor *m)
 
     /* Find topmost keyboard interactive layer, if such a layer exists */
     for (i = 0; i < (int) LENGTH(layers_above_shell); i++) {
-        wl_list_for_each_reverse(l, &m->layers[layers_above_shell[i]],
-                                 link) {
-            if (locked || !l->layer_surface->current.keyboard_interactive ||
-                !l->mapped)
+        wl_list_for_each_reverse(l, &m->layers[layers_above_shell[i]], link) {
+            if (locked || !l->layer_surface->current.keyboard_interactive || !l->mapped)
                 continue;
             /* Deactivate the focused client. */
             focusclient(NULL, 0);
             exclusive_focus = l;
-            client_notify_enter(l->layer_surface->surface,
-                                wlr_seat_get_keyboard(seat));
+            client_notify_enter(l->layer_surface->surface, wlr_seat_get_keyboard(seat));
             return;
         }
     }
@@ -1801,7 +1809,7 @@ drawbar(Monitor *m)
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
-    pixman_image_t * pix;
+    pixman_image_t *pix;
     Client *c;
     Buffer *buf;
 
@@ -3287,6 +3295,7 @@ tile(Monitor *m)
     int i, n = 0;
     Client *c;
 
+    // 计算 tile 的窗口多少个
     wl_list_for_each(c, &clients, link) {
         // VISIBLEON 在屏幕上可见
         if (VISIBLEON(c, m) && !c->isfloating && !c->isfullscreen) {
@@ -3296,8 +3305,6 @@ tile(Monitor *m)
 
     if (n == 0)
         return;
-    if (smartgaps == n)
-        e = 0;
 
     if (n > m->nmaster)
         master_w = m->nmaster ? ROUND((m->w.width + gappx * e) * m->mfact) : 0;
@@ -3306,6 +3313,7 @@ tile(Monitor *m)
     master_y = gappx * e;
     stack_y = gappx * e;
     i = 0;
+    // 绘制窗口
     wl_list_for_each(c, &clients, link) {
         if (!VISIBLEON(c, m) || c->isfloating || c->isfullscreen)
             continue;
@@ -3437,7 +3445,7 @@ togglefullscreen(const Arg *arg)
 {
     Client *sel = focustop(selmon);
     Monitor *mon;
-    if (sel == NULL){
+    if (sel == NULL) {
         return;
     }
     mon = sel->mon;
@@ -3738,8 +3746,7 @@ view(const Arg *arg)
     selmon->showbar = selmon->pertag->showbars[selmon->showbar];
 
     focusclient(focustop(selmon), 1);
-    arrange(selmon);
-    drawbar(selmon);
+    arrangelayers(selmon);
 }
 
 void
