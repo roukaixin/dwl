@@ -3747,6 +3747,7 @@ view(const Arg *arg)
 
     focusclient(focustop(selmon), 1);
     selmon->m.y = selmon->showbar ? selmon->b.real_height + vertpad : 0;
+    drawbar(selmon);
     arrange(selmon);
 }
 
