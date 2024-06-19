@@ -267,7 +267,7 @@ struct Monitor {
     int gaps;
     Pertag *pertag;
     /**
-     * 激活的 tag
+     * 选择的标签集。例如 0、1
      */
     unsigned int seltags;
     /**
@@ -275,7 +275,7 @@ struct Monitor {
      */
     unsigned int sellt;
     /**
-     * 保存当前 tag 和 上一个 tag信息
+     * 标签集。其实就是标签的二进制值
      */
     uint32_t tagset[2];
     float mfact;
@@ -691,6 +691,7 @@ struct Pertag {
     unsigned int sellts[LENGTH(tags) + 1]; /* selected layouts */
     const Layout *ltidxs[LENGTH(tags) + 1][2]; /* matrix of tags and layouts indexes  */
     int showbars[LENGTH(tags) + 1];
+    int oldshowbars[LENGTH(tags) + 1];
 };
 
 /* function implementations */
@@ -804,6 +805,22 @@ arrange(Monitor *m)
     }
     motionnotify(0, NULL, 0, 0, 0, 0);
     checkidleinhibitor(NULL);
+}
+
+void
+logtofile(const char *fmt, ...)
+{
+    unsigned int i;
+    char buf[256];
+    char cmd[256];
+    va_list ap;
+    va_start(ap, fmt);
+    vsprintf((char *) buf, fmt, ap);
+    va_end(ap);
+    i = strlen((const char *) buf);
+
+    sprintf(cmd, "echo '%.*s' >> ~/log", i, buf);
+    system(cmd);
 }
 
 void
@@ -1429,6 +1446,7 @@ createmon(struct wl_listener *listener, void *data)
         m->pertag->ltidxs[i][1] = m->lt[1];
         m->pertag->sellts[i] = m->sellt;
         m->pertag->showbars[i] = m->showbar;
+        m->pertag->oldshowbars[i] = !m->showbar;
     }
 
     /* The xdg-protocol specifies:
@@ -1809,7 +1827,7 @@ drawbar(Monitor *m)
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
-    pixman_image_t *pix;
+    pixman_image_t * pix;
     Client *c;
     Buffer *buf;
 
@@ -3426,9 +3444,12 @@ grid(Monitor *m)
 void
 togglebar(const Arg *arg)
 {
+    selmon->pertag->oldshowbars[selmon->pertag->curtag] = selmon->showbar;
     selmon->showbar = !selmon->showbar;
+    selmon->pertag->showbars[selmon->pertag->curtag] = selmon->showbar;
     wlr_scene_node_set_enabled(&selmon->scene_buffer->node, selmon->showbar);
     arrangelayers(selmon);
+    drawbars();
 }
 
 void
@@ -3445,21 +3466,21 @@ togglefullscreen(const Arg *arg)
 {
     Client *sel = focustop(selmon);
     Monitor *mon;
+    int oldshowbar, showbars;
     if (sel == NULL) {
         return;
     }
     mon = sel->mon;
     setfullscreen(sel, !sel->isfullscreen);
-    if (sel->isfullscreen) {
-        mon->fullscreenshowbar = mon->showbar;
-        if (mon->showbar) {
-            togglebar(0);
-        }
-    } else {
-        if (mon->fullscreenshowbar) {
-            togglebar(0);
-        }
+    oldshowbar = mon->pertag->oldshowbars[mon->pertag->curtag];
+    mon->showbar = mon->pertag->showbars[mon->pertag->curtag];
+    if (!oldshowbar) {
+        showbars = mon->pertag->showbars[mon->pertag->curtag] = !sel->isfullscreen;
+        wlr_scene_node_set_enabled(&selmon->scene_buffer->node, showbars);
+        mon->showbar = showbars;
+        drawbar(mon);
     }
+    arrangelayers(mon);
 }
 
 void
@@ -3743,10 +3764,15 @@ view(const Arg *arg)
     selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
     selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
     selmon->lt[selmon->sellt ^ 1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt ^ 1];
-    selmon->showbar = selmon->pertag->showbars[selmon->showbar];
+    selmon->showbar = selmon->pertag->showbars[selmon->pertag->curtag];
 
+    wlr_scene_node_set_enabled(&selmon->scene_buffer->node, selmon->showbar);
+    if (selmon->showbar) {
+        selmon->w.y = selmon->b.real_height + vertpad;
+    }
     focusclient(focustop(selmon), 1);
-    arrangelayers(selmon);
+    arrange(selmon);
+    drawbar(selmon);
 }
 
 void
