@@ -3718,6 +3718,7 @@ void
 view(const Arg *arg)
 {
     size_t i, tmptag;
+    int old_show_bar;
 
     if (!selmon || (arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
         return;
@@ -3743,11 +3744,13 @@ view(const Arg *arg)
     selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
     selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
     selmon->lt[selmon->sellt ^ 1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt ^ 1];
+    old_show_bar = selmon->showbar;
     selmon->showbar = selmon->pertag->showbars[selmon->showbar];
 
     focusclient(focustop(selmon), 1);
-    selmon->m.y = selmon->showbar ? selmon->b.real_height + vertpad : 0;
-    drawbar(selmon);
+    if (old_show_bar != selmon->showbar) {
+        togglebar(0);
+    }
     arrange(selmon);
 }
 
