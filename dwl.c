@@ -3454,10 +3454,12 @@ togglefullscreen(const Arg *arg)
         mon->fullscreenshowbar = mon->showbar;
         if (mon->showbar) {
             togglebar(0);
+            mon->pertag->showbars[mon->pertag->curtag] = mon->showbar;
         }
     } else {
         if (mon->fullscreenshowbar) {
             togglebar(0);
+            mon->pertag->showbars[mon->pertag->curtag] = mon->showbar;
         }
     }
 }
@@ -3745,10 +3747,10 @@ view(const Arg *arg)
     selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
     selmon->lt[selmon->sellt ^ 1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt ^ 1];
     old_show_bar = selmon->showbar;
-    selmon->showbar = selmon->pertag->showbars[selmon->showbar];
+    selmon->showbar = selmon->pertag->showbars[selmon->pertag->curtag];
 
     focusclient(focustop(selmon), 1);
-    if (old_show_bar != selmon->showbar) {
+    if (selmon->showbar && (old_show_bar != selmon->showbar)) {
         togglebar(0);
     }
     arrange(selmon);
