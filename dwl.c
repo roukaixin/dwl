@@ -3746,7 +3746,8 @@ view(const Arg *arg)
     selmon->showbar = selmon->pertag->showbars[selmon->showbar];
 
     focusclient(focustop(selmon), 1);
-    arrangelayers(selmon);
+    selmon->m.y = selmon->showbar ? selmon->b.real_height + vertpad : 0;
+    arrange(selmon);
 }
 
 void
