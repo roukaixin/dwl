@@ -1827,7 +1827,7 @@ drawbar(Monitor *m)
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
-    pixman_image_t * pix;
+    pixman_image_t *pix;
     Client *c;
     Buffer *buf;
 
@@ -3324,13 +3324,12 @@ tile(Monitor *m)
     if (n == 0)
         return;
 
-    if (n > m->nmaster){
+    if (n > m->nmaster) {
         master_w = m->nmaster ? ROUND((m->w.width + gappi * e) * m->mfact) : 0;
+    } else {
+        master_w = m->w.width - gappo * e;
     }
-    else {
-        master_w = m->w.width - 2 * gappo * e + gappi * e;
-    }
-    master_y = gappo* e;
+    master_y = gappo * e;
     stack_y = gappo * e;
     i = 0;
     // 绘制窗口
@@ -3342,7 +3341,7 @@ tile(Monitor *m)
             h = (m->w.height - master_y - gappo * e - gappi * e * (r - 1)) / r;
             resize(c,
                    (struct wlr_box) {
-                           .x      = m->w.x + (int) (gappo* e),
+                           .x      = m->w.x + (int) (gappo * e),
                            .y      = m->w.y + (int) master_y,
                            .width  = (int) (master_w - gappo * e),
                            .height = (int) h
