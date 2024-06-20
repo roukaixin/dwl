@@ -3324,12 +3324,14 @@ tile(Monitor *m)
     if (n == 0)
         return;
 
-    if (n > m->nmaster)
-        master_w = m->nmaster ? ROUND((m->w.width + gappx * e) * m->mfact) : 0;
-    else
-        master_w = m->w.width - 2 * gappx * e + gappx * e;
-    master_y = gappx * e;
-    stack_y = gappx * e;
+    if (n > m->nmaster){
+        master_w = m->nmaster ? ROUND((m->w.width + gappi * e) * m->mfact) : 0;
+    }
+    else {
+        master_w = m->w.width - 2 * gappo * e + gappi * e;
+    }
+    master_y = gappo* e;
+    stack_y = gappo * e;
     i = 0;
     // 绘制窗口
     wl_list_for_each(c, &clients, link) {
@@ -3337,30 +3339,30 @@ tile(Monitor *m)
             continue;
         if (i < m->nmaster) {
             r = MIN(n, m->nmaster) - i;
-            h = (m->w.height - master_y - gappx * e - gappx * e * (r - 1)) / r;
+            h = (m->w.height - master_y - gappo * e - gappi * e * (r - 1)) / r;
             resize(c,
                    (struct wlr_box) {
-                           .x      = m->w.x + (int) (gappx * e),
+                           .x      = m->w.x + (int) (gappo* e),
                            .y      = m->w.y + (int) master_y,
-                           .width  = (int) (master_w - gappx * e),
+                           .width  = (int) (master_w - gappo * e),
                            .height = (int) h
                    },
                    0
             );
-            master_y += c->geom.height + gappx * e;
+            master_y += c->geom.height + gappi * e;
         } else {
             r = n - i;
-            h = (m->w.height - stack_y - gappx * e - gappx * e * (r - 1)) / r;
+            h = (m->w.height - stack_y - gappo * e - gappi * e * (r - 1)) / r;
             resize(c,
                    (struct wlr_box) {
-                           .x      =(int) (m->w.x + master_w + gappx * e),
+                           .x      =(int) (m->w.x + master_w + gappi * e),
                            .y      = m->w.y + (int) stack_y,
-                           .width  = (int) (m->w.width - master_w - 2 * gappx * e),
+                           .width  = (int) (m->w.width - master_w - gappo * e - gappi * e),
                            .height = (int) h
                    },
                    0
             );
-            stack_y += c->geom.height + gappx * e;
+            stack_y += c->geom.height + gappi * e;
         }
         i++;
     }
@@ -3374,6 +3376,7 @@ grid(Monitor *m)
     // client x
     unsigned int cx, cy, cw, ch;
     unsigned int dx;
+    // last_row_cols 最后一行的列数
     unsigned int cols, rows, last_row_cols;
     Client *c;
 
@@ -3394,8 +3397,8 @@ grid(Monitor *m)
                 break;
         // 计算有多少行（rows）
         rows = (cols && (cols - 1) * cols >= n) ? cols - 1 : cols;
-        cw = (m->w.width - 2 * gappx - (cols - 1) * gappx) / cols;
-        ch = (m->w.height - 2 * gappx - (rows - 1) * gappx) / rows;
+        cw = (m->w.width - 2 * gappo - (cols - 1) * gappi) / cols;
+        ch = (m->w.height - 2 * gappo - (rows - 1) * gappi) / rows;
         last_row_cols = n % cols;
     }
 
@@ -3407,20 +3410,20 @@ grid(Monitor *m)
             }
             if (n == 1) {
                 // 只有一个 client ，显示在中间
-                cw = (int) ((m->w.width - 2 * gappx) * 0.7);
-                ch = (int) ((m->w.height - 2 * gappx) * 0.65);
+                cw = (int) ((m->w.width - 2 * gappo) * 0.7);
+                ch = (int) ((m->w.height - 2 * gappo) * 0.65);
                 cx = m->w.x + (m->w.width - cw) / 2;
                 cy = m->w.y + (m->w.height - ch) / 2;
             } else if (n == 2) {
-                cw = (m->w.width - 2 * gappx - gappx) / 2;
-                ch = (int) ((m->w.height - 2 * gappx) * 0.65);
-                cx = m->w.x + i * (cw + gappx);
+                cw = (m->w.width - 2 * gappo - gappi) / 2;
+                ch = (int) ((m->w.height - 2 * gappo) * 0.65);
+                cx = m->w.x + i * (cw + gappi);
                 cy = m->w.y + (m->w.height - ch) / 2;
             } else {
-                cx = m->w.x + (i % cols) * (cw + gappx);
-                cy = m->w.y + (i / cols) * (ch + gappx);
+                cx = m->w.x + (i % cols) * (cw + gappi);
+                cy = m->w.y + (i / cols) * (ch + gappi);
                 if (last_row_cols) {
-                    dx = (m->w.width - last_row_cols * cw - (last_row_cols - 1) * gappx) / 2 - gappx;
+                    dx = (m->w.width - last_row_cols * cw - (last_row_cols - 1) * gappi) / 2 - gappo;
                     if (i >= n - last_row_cols) {
                         cx += dx;
                     }
@@ -3429,8 +3432,8 @@ grid(Monitor *m)
             }
             resize(c,
                    (struct wlr_box) {
-                           .x      = (int) (cx + gappx),
-                           .y      = (int) (cy + gappx),
+                           .x      = (int) (cx + gappo),
+                           .y      = (int) (cy + gappo),
                            .width  = (int) (cw - 2 * c->bw),
                            .height = (int) (ch - 2 * c->bw)
                    },

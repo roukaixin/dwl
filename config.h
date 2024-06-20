@@ -8,7 +8,8 @@
 static const int sloppyfocus = 1;  /* focus follows mouse */
 static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
 static int gaps = 1;  /* 1 means gaps between windows are added */
-static const unsigned int gappx = 12; /* gap pixel between windows */
+static const unsigned int gappi = 20; /* 窗口之间的间距 */
+static const unsigned int gappo = 12; /* 窗口与边缘的间距 */
 static const unsigned int borderpx = 1;  /* border pixel of windows */
 static const float rootcolor[] = COLOR(0x333333c0);
 static const float bordercolor[] = COLOR(0x444444ff);
