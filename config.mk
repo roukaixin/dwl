@@ -15,4 +15,4 @@ XWAYLAND = -DXWAYLAND
 XLIBS = xcb xcb-icccm
 CFLAGS =
 
-CC = cc
+CC = gcc

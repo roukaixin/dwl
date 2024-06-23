@@ -39,6 +39,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
+#include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -281,13 +282,14 @@ struct Monitor {
     float mfact;
     int gamma_lut_changed;
     int nmaster;
-    int showbar, fullscreenshowbar;
+    int showbar;
     /**
      * 布局图标
      */
     char ltsymbol[16];
     struct fcft_font *font;
     int lrpad;
+    int asleep;
 };
 
 typedef struct {
@@ -505,6 +507,8 @@ static void outputmgrtest(struct wl_listener *listener, void *data);
 static void pointerfocus(Client *c, struct wlr_surface *surface, double sx,
                          double sy, uint32_t time);
 
+static void powermgrsetmode(struct wl_listener *listener, void *data);
+
 static void quit(const Arg *arg);
 
 static void rendermon(struct wl_listener *listener, void *data);
@@ -623,6 +627,7 @@ static struct wlr_gamma_control_manager_v1 *gamma_control_mgr;
 static struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_mgr;
 static struct wlr_virtual_pointer_manager_v1 *virtual_pointer_mgr;
 static struct wlr_cursor_shape_manager_v1 *cursor_shape_mgr;
+static struct wlr_output_power_manager_v1 *power_mgr;
 
 static struct wlr_pointer_constraints_v1 *pointer_constraints;
 static struct wlr_relative_pointer_manager_v1 *relative_pointer_mgr;
@@ -1100,7 +1105,7 @@ cleanup(void)
     }
 
     if (child_pid > 0) {
-        kill(child_pid, SIGTERM);
+        kill(-child_pid, SIGTERM);
         waitpid(child_pid, NULL, 0);
     }
     wlr_xcursor_manager_destroy(cursor_mgr);
@@ -1159,6 +1164,9 @@ closemon(Monitor *m)
         do /* don't switch to disabled mons */
             selmon = wl_container_of(mons.next, selmon, link);
         while (!selmon->wlr_output->enabled && i++ < nmons);
+
+        if (!selmon->wlr_output->enabled)
+            selmon = NULL;
     }
 
     wl_list_for_each(c, &clients, link) {
@@ -1394,7 +1402,6 @@ createmon(struct wl_listener *listener, void *data)
 
     wlr_output_state_init(&state);
     /* Initialize monitor state using configured rules */
-    m->gaps = gaps;
 
     m->tagset[0] = m->tagset[1] = 1;
     for (r = monrules; r < END(monrules); r++) {
@@ -1430,7 +1437,6 @@ createmon(struct wl_listener *listener, void *data)
     m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
     m->scene_buffer->point_accepts_input = bar_accepts_input;
     m->showbar = showbar;
-    m->fullscreenshowbar = 0;
     updatebar(m);
 
     wl_list_insert(&mons, &m->link);
@@ -1827,7 +1833,7 @@ drawbar(Monitor *m)
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
-    pixman_image_t *pix;
+    pixman_image_t * pix;
     Client *c;
     Buffer *buf;
 
@@ -2602,6 +2608,10 @@ outputmgrapplyortest(struct wlr_output_configuration_v1 *config,
         Monitor *m = wlr_output->data;
         struct wlr_output_state state;
 
+        /* Ensure displays previously disabled by wlr-output-power-management-v1
+         * are properly handled*/
+        m->asleep = 0;
+
         wlr_output_state_init(&state);
         wlr_output_state_set_enabled(&state, config_head->state.enabled);
         if (!config_head->state.enabled)
@@ -2615,11 +2625,6 @@ outputmgrapplyortest(struct wlr_output_configuration_v1 *config,
                     config_head->state.custom_mode.height,
                     config_head->state.custom_mode.refresh);
 
-        /* Don't move monitors if position wouldn't change, this to avoid
-         * wlroots marking the output as manually configured */
-        if (m->m.x != config_head->state.x || m->m.y != config_head->state.y)
-            wlr_output_layout_add(output_layout, wlr_output,
-                                  config_head->state.x, config_head->state.y);
         wlr_output_state_set_transform(&state, config_head->state.transform);
         wlr_output_state_set_scale(&state, config_head->state.scale);
         wlr_output_state_set_adaptive_sync_enabled(
@@ -2628,6 +2633,13 @@ outputmgrapplyortest(struct wlr_output_configuration_v1 *config,
         apply_or_test:
         ok &= test ? wlr_output_test_state(wlr_output, &state)
                    : wlr_output_commit_state(wlr_output, &state);
+
+        /* Don't move monitors if position wouldn't change, this to avoid
+         * wlroots marking the output as manually configured.
+         * wlr_output_layout_add does not like disabled outputs */
+        if (!test && wlr_output->enabled && (m->m.x != config_head->state.x || m->m.y != config_head->state.y))
+            wlr_output_layout_add(output_layout, wlr_output,
+                                  config_head->state.x, config_head->state.y);
 
         wlr_output_state_finish(&state);
     }
@@ -2675,6 +2687,23 @@ pointerfocus(Client *c, struct wlr_surface *surface, double sx, double sy,
      * wlroots makes this a no-op if surface is already focused */
     wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
     wlr_seat_pointer_notify_motion(seat, time, sx, sy);
+}
+
+void
+powermgrsetmode(struct wl_listener *listener, void *data)
+{
+    struct wlr_output_power_v1_set_mode_event *event = data;
+    struct wlr_output_state state = {0};
+    Monitor *m = event->output->data;
+
+    if (!m)
+        return;
+
+    m->gamma_lut_changed = 1; /* Reapply gamma LUT when re-enabling the ouput */
+    wlr_output_state_set_enabled(&state, event->mode);
+    wlr_output_commit_state(m->wlr_output, &state);
+
+    m->asleep = !event->mode;
 }
 
 void
@@ -2767,8 +2796,14 @@ requestmonstate(struct wl_listener *listener, void *data)
 void
 resize(Client *c, struct wlr_box geo, int interact)
 {
-    struct wlr_box *bbox = interact ? &sgeom : &c->mon->w;
+    struct wlr_box *bbox;
     struct wlr_box clip;
+
+    if (!c->mon)
+        return;
+
+    bbox = interact ? &sgeom : &c->mon->w;
+
     client_set_bounds(c, geo.width, geo.height);
     c->geom = geo;
     applybounds(c, bbox);
@@ -2814,6 +2849,7 @@ run(char *startup_cmd)
         if ((child_pid = fork()) < 0)
             die("startup: fork:");
         if (child_pid == 0) {
+            setsid();
             execl("/bin/sh", "/bin/sh", "-c", startup_cmd, NULL);
             die("startup: execl:");
         }
@@ -2883,9 +2919,8 @@ setfloating(Client *c, int floating)
         return;
     wlr_scene_node_reparent(
             &c->scene->node,
-            layers[c->isfullscreen || (p && p->isfullscreen) ? LyrFS
-                                                             : c->isfloating ? LyrFloat
-                                                                             : LyrTile]);
+            layers[c->isfullscreen || (p && p->isfullscreen) ? LyrFS : c->isfloating ? LyrFloat : LyrTile]
+    );
     arrange(c->mon);
     drawbars();
 }
@@ -2971,10 +3006,7 @@ setmon(Client *c, Monitor *m, uint32_t newtags)
     if (m) {
         /* Make sure window actually overlaps with the monitor */
         resize(c, c->geom, 0);
-        c->tags =
-                newtags
-                ? newtags
-                : m->tagset[m->seltags]; /* assign tags of target monitor */
+        c->tags = newtags ? newtags : m->tagset[m->seltags]; /* assign tags of target monitor */
         setfullscreen(c, c->isfullscreen); /* This will call arrange(c->mon) */
         setfloating(c, c->isfloating);
     }
@@ -3092,6 +3124,9 @@ setup(void)
 
     gamma_control_mgr = wlr_gamma_control_manager_v1_create(dpy);
     LISTEN_STATIC(&gamma_control_mgr->events.set_gamma, setgamma);
+
+    power_mgr = wlr_output_power_manager_v1_create(dpy);
+    LISTEN_STATIC(&power_mgr->events.set_mode, powermgrsetmode);
 
     /* Creates an output layout, which a wlroots utility for working with an
      * arrangement of screens in a physical layout. */
@@ -3308,7 +3343,7 @@ void
 tile(Monitor *m)
 {
     // master_w : master 宽度、master_y : master y轴
-    unsigned int h, r, e = m->gaps, master_w, master_y, stack_y;
+    unsigned int h, r, e = 1, master_w, master_y, stack_y;
     // n : 表示平铺的窗口数量
     int i, n = 0;
     Client *c;
@@ -3599,7 +3634,7 @@ updatemons(struct wl_listener *listener, void *data)
 
     /* First remove from the layout the disabled monitors */
     wl_list_for_each(m, &mons, link) {
-        if (m->wlr_output->enabled)
+        if (m->wlr_output->enabled || m->asleep)
             continue;
         config_head =
                 wlr_output_configuration_head_v1_create(config, m->wlr_output);
@@ -3659,6 +3694,10 @@ updatemons(struct wl_listener *listener, void *data)
 
         config_head->state.x = m->m.x;
         config_head->state.y = m->m.y;
+
+        if (!selmon) {
+            selmon = m;
+        }
     }
 
     if (selmon && selmon->wlr_output->enabled) {
