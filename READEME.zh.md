@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `c2e7350f`(24-6-13 at 上午7:48)，描述：`Make sure toplevel_from_wlr_surface is called with a valid surface pointer`
+更新最新代码 `13925eb1`(24-6-24 at 上午4:42)，描述：`correctly report position to xwayland clients`
 
 # 安装
 
@@ -15,3 +15,18 @@ sudo pacman -S libinput wayland wlroots wayland-protocols pkg-config
 ```shell
 sudo make install
 ```
+
+![img.png](img.png)
+
+
+# 已打补丁
+- bar
+- attachbottom
+- autostart
+- barpadding
+- setupenv
+- hide_vacant_tags
+- numlock-capslock
+- pertag
+- gaps
+- hide-behind-fullscree
