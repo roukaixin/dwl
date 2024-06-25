@@ -2345,7 +2345,7 @@ mapnotify(struct wl_listener *listener, void *data)
     if (client_is_unmanaged(c)) {
         /* Unmanaged clients always are floating */
         wlr_scene_node_reparent(&c->scene->node, layers[LyrFloat]);
-        wlr_scene_node_set_position(&c->scene->node, c->geom.x + (int) borderpx, c->geom.y + (int) borderpx);
+        wlr_scene_node_set_position(&c->scene->node, c->geom.x, c->geom.y);
         if (client_wants_focus(c)) {
             focusclient(c, 1);
             exclusive_focus = c;
@@ -3971,7 +3971,7 @@ void createnotifyx11(struct wl_listener *listener, void *data)
     c = xsurface->data = ecalloc(1, sizeof(*c));
     c->surface.xwayland = xsurface;
     c->type = X11;
-    c->bw = borderpx;
+    c->bw = client_is_unmanaged(c) ? 0 : borderpx;
 
     /* Listen to the various events it can emit */
     LISTEN(&xsurface->events.associate, &c->associate, associatex11);
