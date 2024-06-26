@@ -78,6 +78,7 @@
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
 #define ROUND(X) ((int) ((X < 0) ? (X - 0.5) : (X + 0.5)))
+#define CEIL(X)                 ((int)((X < 0) ? (X) : ((int)X == X) ? (X) : ((int)X + 1)))
 #define CLEANMASK(mask) (mask & ~WLR_MODIFIER_CAPS)
 #define VISIBLEON(C, M)                                                        \
         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[ (M)->seltags ]))
@@ -1351,6 +1352,8 @@ createlayersurface(struct wl_listener *listener, void *data)
 
     wl_list_insert(&l->mon->layers[layer_surface->pending.layer], &l->link);
     wlr_surface_send_enter(surface, layer_surface->output);
+    wlr_fractional_scale_v1_notify_scale(surface, l->mon->wlr_output->scale);
+    wlr_surface_set_preferred_buffer_scale(surface, CEIL(l->mon->wlr_output->scale));
 
     /* Temporarily set the layer's current state to pending
      * so that we can easily arrange it
@@ -1833,7 +1836,7 @@ drawbar(Monitor *m)
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
     uint32_t stride, size;
-    pixman_image_t *pix;
+    pixman_image_t * pix;
     Client *c;
     Buffer *buf;
 
