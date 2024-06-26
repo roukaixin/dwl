@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `13925eb1`(24-6-24 at 上午4:42)，描述：`correctly report position to xwayland clients`
+更新最新代码 `46ae0754`(24-6-5 at 下午2:42)，描述：`set preferred scale on creation (LayerShell)`
 
 # 安装
 
