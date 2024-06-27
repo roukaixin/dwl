@@ -10,10 +10,7 @@ static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will
 static const unsigned int gappi = 12; /* gap pixel between windows 窗口之间的间距 */
 static const unsigned int gappo = 12; /* gap pixel between windows 窗口与边缘的间距 */
 static const unsigned int borderpx = 1;  /* border pixel of windows */
-static const float rootcolor[] = COLOR(0x333333c0);
-static const float bordercolor[] = COLOR(0x444444ff);
-static const float focuscolor[] = COLOR(0x005577ff);
-static const float urgentcolor[] = COLOR(0xff0000ff);
+static const float rootcolor[] = COLOR(0x000000ff);
 /* This conforms to the xdg-protocol. Set the alpha to zero to restore the old behavior */
 static const float fullscreen_bg[] = {0.1f, 0.1f, 0.1f, 0.0f}; /* You can also use glsl colors */
 
@@ -23,7 +20,6 @@ static const int topbar = 1; /* 0 means bottom bar */
 static const int vertpad = 5; /* vertical padding of bar (上下的间距) */
 static const int sidepad = 5; /* horizontal padding of bar (左右的间距) */
 static const char *fonts[] = {"JetBrains Mono:style=ExtraLight,Regular:size=14:antialias=true:autohint=true"};
-static pixman_color_t sel_underline_fg = {0x7777, 0x9999, 0xAAAA, 0xffU};
 
 static uint32_t colors[][3] = {
         /*               fg          bg          border    */

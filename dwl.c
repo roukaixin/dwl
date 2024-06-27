@@ -69,8 +69,8 @@
 #include <xcb/xcb_icccm.h>
 #endif
 
-#include "drwl.h"
 #include "util.h"
+#include "drwl.h"
 
 /* macros */
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
@@ -295,9 +295,9 @@ struct Monitor {
      * 布局图标
      */
     char ltsymbol[16];
+    int asleep;
     Drwl *drw;
     int lrpad;
-    int asleep;
 };
 
 typedef struct {
@@ -365,9 +365,8 @@ static bool bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx, doubl
 
 static void buffer_destroy(struct wlr_buffer *buffer);
 
-static bool buffer_begin_data_ptr_access(struct wlr_buffer *buffer,
-                                         uint32_t flags, void **data,
-                                         uint32_t *format, size_t *stride);
+static bool
+buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags, void **data, uint32_t *format, size_t *stride);
 
 static void buffer_end_data_ptr_access(struct wlr_buffer *buffer);
 
@@ -939,8 +938,7 @@ axisnotify(struct wl_listener *listener, void *data)
 }
 
 bool
-bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx,
-                  double *sy)
+bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx, double *sy)
 {
     return true;
 }
@@ -955,8 +953,7 @@ buffer_destroy(struct wlr_buffer *wlr_buffer)
 
 bool
 buffer_begin_data_ptr_access(struct wlr_buffer *wlr_buffer, uint32_t flags,
-                             void **data, uint32_t *format,
-                             size_t *stride)
+                             void **data, uint32_t *format, size_t *stride)
 {
     Buffer *buf;
     buf = wl_container_of(wlr_buffer, buf, base);
@@ -1032,15 +1029,13 @@ buttonpress(struct wl_listener *listener, void *data)
 
             /* Change focus if the button was _pressed_ over a client */
             xytonode(cursor->x, cursor->y, NULL, &c, NULL, NULL, NULL);
-            if (click == ClkClient &&
-                (!client_is_unmanaged(c) || client_wants_focus(c)))
+            if (click == ClkClient && (!client_is_unmanaged(c) || client_wants_focus(c)))
                 focusclient(c, 1);
 
             keyboard = wlr_seat_get_keyboard(seat);
             mods = keyboard ? wlr_keyboard_get_modifiers(keyboard) : 0;
             for (b = buttons; b < END(buttons); b++) {
-                if (CLEANMASK(mods) == CLEANMASK(b->mod) &&
-                    event->button == b->button && click == b->click && b->func) {
+                if (CLEANMASK(mods) == CLEANMASK(b->mod) && event->button == b->button && click == b->click && b->func) {
                     b->func(click == ClkTagBar && b->arg.i == 0 ? &arg : &b->arg);
                     return;
                 }
@@ -1888,7 +1883,7 @@ drawbar(Monitor *m)
     for (i = 0; i < LENGTH(tags); i++) {
         // 是否选中当前 tag
         sel = (int) m->tagset[m->seltags] & 1 << i;
-        if(!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
+        if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
             continue;
         // 一个 tag 宽度
         w = TEXTW(m, tags[i]);
@@ -1981,7 +1976,7 @@ focusclient(Client *c, int lift)
         /* Don't change border color if there is an exclusive focus or we are
          * handling a drag operation */
         if (!exclusive_focus && !seat->drag)
-            client_set_border_color(c, (float[])COLOR(colors[SchemeSel][ColBorder]));
+            client_set_border_color(c, (float[]) COLOR(colors[SchemeSel][ColBorder]));
     }
 
     /* Deactivate old client if focus is changing */
@@ -1998,10 +1993,9 @@ focusclient(Client *c, int lift)
             return;
             /* Don't deactivate old client if the new one wants focus, as this
              * causes issues with winecfg and probably other clients */
-        } else if (old_c && !client_is_unmanaged(old_c) &&
-                   (!c || !client_wants_focus(c))) {
-            client_set_border_color(old_c, (float[])COLOR(colors[SchemeNorm][ColBorder]));
+        } else if (old_c && !client_is_unmanaged(old_c) && (!c || !client_wants_focus(c))) {
 
+            client_set_border_color(old_c, (float[]) COLOR(colors[SchemeNorm][ColBorder]));
             client_activate_surface(old, 0);
         }
     }
@@ -2328,7 +2322,7 @@ mapnotify(struct wl_listener *listener, void *data)
 
     for (i = 0; i < 4; i++) {
         c->border[i] = wlr_scene_rect_create(c->scene, 0, 0,
-                                             (float[])COLOR(colors[c->isurgent ? SchemeUrg : SchemeNorm][ColBorder]));
+                                             (float[]) COLOR(colors[c->isurgent ? SchemeUrg : SchemeNorm][ColBorder]));
         c->border[i]->node.data = c;
     }
 
@@ -3686,7 +3680,8 @@ updatemons(struct wl_listener *listener, void *data)
 
     /* Update bar */
     if (stext[0] == '\0')
-        strncpy(stext, "dwl-"VERSION, sizeof(stext));
+        strncpy(stext, "dwl-"
+    VERSION, sizeof(stext));
     wl_list_for_each(m, &mons, link) {
         updatebar(m);
         drawbar(m);
@@ -3746,7 +3741,7 @@ urgent(struct wl_listener *listener, void *data)
     drawbars();
 
     if (client_surface(c)->mapped)
-        client_set_border_color(c, (float[])COLOR(colors[SchemeUrg][ColBorder]));
+        client_set_border_color(c, (float[]) COLOR(colors[SchemeUrg][ColBorder]));
 }
 
 void
