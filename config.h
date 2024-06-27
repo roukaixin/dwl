@@ -23,14 +23,17 @@ static const int topbar = 1; /* 0 means bottom bar */
 static const int vertpad = 5; /* vertical padding of bar (上下的间距) */
 static const int sidepad = 5; /* horizontal padding of bar (左右的间距) */
 static const char *fonts[] = {"JetBrains Mono:style=ExtraLight,Regular:size=14:antialias=true:autohint=true"};
-static pixman_color_t normbarfg = {0xbbbb, 0xbbbb, 0xbbbb, 0xffU};
-static pixman_color_t normbarbg = {0x3333, 0x3333, 0x3333, 0xc000};
-static pixman_color_t selbarfg = {0xeeee, 0xeeee, 0xeeee, 0xffU};
-static pixman_color_t selbarbg = {0x3333, 0x3333, 0x3333, 0xc000};
 static pixman_color_t sel_underline_fg = {0x7777, 0x9999, 0xAAAA, 0xffU};
 
+static uint32_t colors[][3] = {
+        /*               fg          bg          border    */
+        [SchemeNorm] = {0xbbbbbbff, 0x222222ff, 0x444444ff},
+        [SchemeSel]  = {0xeeeeeeff, 0x005577ff, 0x005577ff},
+        [SchemeUrg]  = {0, 0, 0x770000ff},
+};
+
 /* tagging - TAGCOUNT must be no greater than 31 */
-static char *tags[] = { "󰎤", "󰎧", "󰎪", "󰎭", "󰎱", "󰎳", "󰎶", "󰎹", "󰎼" };
+static char *tags[] = {"󰎤", "󰎧", "󰎪", "󰎭", "󰎱", "󰎳", "󰎶", "󰎹", "󰎼"};
 
 /* logging */
 static int log_level = WLR_ERROR;

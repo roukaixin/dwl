@@ -1,12 +1,10 @@
 /*
  * See LICENSE file for copyright and license details.
  */
-#include <fcft/fcft.h>
 #include <getopt.h>
 #include <libdrm/drm_fourcc.h>
 #include <libinput.h>
 #include <linux/input-event-codes.h>
-#include <pixman-1/pixman.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,9 +89,14 @@
         static struct wl_listener _l = {.notify = (H)};                        \
         wl_signal_add((E), &_l);                                               \
     } while (0)
-#define TEXTW(mon, text) (drwl_text(NULL, mon->font, 0, 0, 0, 0, 0, text, NULL, NULL) + mon->lrpad)
+#define TEXTW(mon, text)        (drwl_font_getwidth(mon->drw, text) + mon->lrpad)
 
 /* enums */
+enum {
+    SchemeNorm,
+    SchemeSel,
+    SchemeUrg
+}; /* color schemes */
 enum {
     CurNormal,
     CurPressed,
@@ -292,7 +295,7 @@ struct Monitor {
      * 布局图标
      */
     char ltsymbol[16];
-    struct fcft_font *font;
+    Drwl *drw;
     int lrpad;
     int asleep;
 };
@@ -994,9 +997,11 @@ buttonpress(struct wl_listener *listener, void *data)
     if (c)
         click = ClkClient;
 
-    if (!c &&
+    if (!c && !exclusive_focus &&
         (node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
         (buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer) {
+        cursor->x *= selmon->wlr_output->scale;
+        cursor->y *= selmon->wlr_output->scale;
         x = selmon->m.x;
         wl_list_for_each(c, &clients, link) {
             if (c->mon != selmon)
@@ -1026,6 +1031,7 @@ buttonpress(struct wl_listener *listener, void *data)
                 break;
 
             /* Change focus if the button was _pressed_ over a client */
+            xytonode(cursor->x, cursor->y, NULL, &c, NULL, NULL, NULL);
             if (click == ClkClient &&
                 (!client_is_unmanaged(c) || client_wants_focus(c)))
                 focusclient(c, 1);
@@ -1123,7 +1129,7 @@ cleanup(void)
        destroyed) to avoid destroying them with an invalid scene output. */
     wlr_scene_node_destroy(&scene->tree.node);
 
-    fcft_fini();
+    drwl_fini();
 }
 
 void
@@ -1139,7 +1145,7 @@ cleanupmon(struct wl_listener *listener, void *data)
     }
 
     // 销毁 fcft
-    fcft_destroy(m->font);
+    drwl_destroy(m->drw);
 
     wl_list_remove(&m->destroy.link);
     wl_list_remove(&m->frame.link);
@@ -1439,6 +1445,9 @@ createmon(struct wl_listener *listener, void *data)
     wlr_output_state_set_enabled(&state, 1);
     wlr_output_commit_state(wlr_output, &state);
     wlr_output_state_finish(&state);
+
+    if (!(m->drw = drwl_create()))
+        die("failed to create drwl context");
 
     m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
     m->scene_buffer->point_accepts_input = bar_accepts_input;
@@ -1832,11 +1841,10 @@ drawbar(Monitor *m)
 {
     int x, w, status_w = 0;
     int sel;
-    int boxs = m->font->height / 9;
+    int boxs = m->drw->font->height / 9;
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
-    uint32_t stride, size;
-    pixman_image_t * pix;
+    int32_t stride, size;
     Client *c;
     Buffer *buf;
 
@@ -1845,7 +1853,7 @@ drawbar(Monitor *m)
         return;
     }
 
-    stride = m->b.width * 4;
+    stride = drwl_stride(m->b.width);
     size = stride * m->b.height;
 
     // 分配 bar 内存
@@ -1853,27 +1861,17 @@ drawbar(Monitor *m)
     buf->stride = stride;
     wlr_buffer_init(&buf->base, &buffer_impl, m->b.width, m->b.height);
 
-    pix = pixman_image_create_bits(PIXMAN_a8r8g8b8, m->b.width, m->b.height, buf->data, (int) stride);
+    drwl_prepare_drawing(m->drw, m->b.width, m->b.height, buf->data, stride);
 
     /* draw status first so it can be overdrawn by tags later */
-    if (m == selmon) {
+    if (m == selmon) {  /* status is only drawn on selected monitor */
         if (stext[0] == '\0') {
             strncpy(stext, "dwl-"
             VERSION, sizeof(stext));
         }
         // status 宽度
-        status_w = TEXTW(m, stext) - m->lrpad;
-        drwl_text(pix,
-                  m->font,
-                  m->b.width - status_w,
-                  0,
-                  status_w,
-                  m->b.height,
-                  0,
-                  stext,
-                  &normbarfg,
-                  &normbarbg
-        );
+        status_w = TEXTW(m, stext) - m->lrpad + 2; /* 2px right padding */
+        drwl_text(m->drw, m->b.width - status_w, 0, status_w, m->b.height, 0, stext, 0);
     }
 
 
@@ -1886,35 +1884,22 @@ drawbar(Monitor *m)
     }
     // 绘制 tags。x 表示开始 x 坐标
     x = 0;
+    c = focustop(m);
     for (i = 0; i < LENGTH(tags); i++) {
         // 是否选中当前 tag
         sel = (int) m->tagset[m->seltags] & 1 << i;
-        if (!(occ & 1 << i || sel))
+        if(!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
             continue;
         // 一个 tag 宽度
         w = TEXTW(m, tags[i]);
-        drwl_text(pix,
-                  m->font,
-                  x,
-                  0,
-                  w,
-                  m->b.height,
-                  m->lrpad / 2,
-                  tags[i],
-                  urg & 1 << i ? &selbarbg : (sel ? &selbarfg : &normbarfg),
-                  urg & 1 << i ? &selbarfg : (sel ? &selbarbg : &normbarbg)
-        );
+        drwl_setscheme(m->drw, colors[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
+        drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, tags[i], urg & 1 << i);
 
         // occ & 1 << i : 当前标签下是否有 client
         if (sel) {
-            draw_rect(pix,
-                      (int16_t) (x + 2),
-                      (int16_t) (m->b.height - boxw),
-                      w + m->lrpad - 4,
-                      boxw,
-                      sel,
-                      &sel_underline_fg
-            );
+            drwl_rect(m->drw, x + boxs, boxs, boxw, boxw,
+                      m == selmon && c && c->tags & 1 << i,
+                      urg & 1 << i);
         }
 
         x += w;
@@ -1922,37 +1907,23 @@ drawbar(Monitor *m)
 
     // 绘制布局图标
     w = TEXTW(m, m->ltsymbol);
-    x = drwl_text(pix, m->font, x, 0, w, m->b.height, m->lrpad / 2, m->ltsymbol, &normbarfg, &normbarbg);
+    drwl_setscheme(m->drw, colors[SchemeNorm]);
+    x = drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, m->ltsymbol, 0);
 
     // 绘制 title
     if ((w = m->b.width - status_w - x) > m->b.height) {
-        if ((c = focustop(m)) != NULL) {
-            drwl_text(pix,
-                      m->font,
-                      x,
-                      0,
-                      w,
-                      m->b.height,
-                      m->lrpad / 2,
-                      client_get_title(c),
-                      m == selmon ? &selbarfg : &normbarfg,
-                      (m == selmon && c) ? &selbarbg : &normbarbg
-            );
+        if (c) {
+            drwl_setscheme(m->drw, colors[m == selmon ? SchemeSel : SchemeNorm]);
             if (c && c->isfloating) {
-                drwl_rect(pix,
-                          (int16_t) (x + boxs),
-                          (int16_t) boxs,
-                          boxw,
-                          boxw,
-                          0,
-                          m == selmon ? &selbarfg : &normbarfg);
+                drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, client_get_title(c), 0);
             }
         } else {
-            drwl_rect(pix, (int16_t) x, 0, w, m->b.height, 1, &normbarbg);
+            drwl_setscheme(m->drw, colors[SchemeNorm]);
+            drwl_rect(m->drw, x, 0, w, m->b.height, 1, 1);
         }
     }
 
-    pixman_image_unref(pix);
+    drwl_finish_drawing(m->drw);
     wlr_scene_buffer_set_dest_size(m->scene_buffer, m->b.real_width, m->b.real_height);
     wlr_scene_node_set_position(
             &m->scene_buffer->node, m->m.x + sidepad,
@@ -2010,13 +1981,13 @@ focusclient(Client *c, int lift)
         /* Don't change border color if there is an exclusive focus or we are
          * handling a drag operation */
         if (!exclusive_focus && !seat->drag)
-            client_set_border_color(c, focuscolor);
+            client_set_border_color(c, (float[])COLOR(colors[SchemeSel][ColBorder]));
     }
 
     /* Deactivate old client if focus is changing */
     if (old && (!c || client_surface(c) != old)) {
         /* If an overlay is focused, don't focus or activate the client,
-         * but only update its position in fstack to render its border with
+         * but only update its position in fstack to render its border with its color
          * focuscolor and focus it after the overlay is closed. */
         if (old_client_type == LayerShell &&
             wlr_scene_node_coords(&old_l->scene->node, &unused_lx, &unused_ly) &&
@@ -2029,7 +2000,7 @@ focusclient(Client *c, int lift)
              * causes issues with winecfg and probably other clients */
         } else if (old_c && !client_is_unmanaged(old_c) &&
                    (!c || !client_wants_focus(c))) {
-            client_set_border_color(old_c, bordercolor);
+            client_set_border_color(old_c, (float[])COLOR(colors[SchemeNorm][ColBorder]));
 
             client_activate_surface(old, 0);
         }
@@ -2356,7 +2327,8 @@ mapnotify(struct wl_listener *listener, void *data)
     }
 
     for (i = 0; i < 4; i++) {
-        c->border[i] = wlr_scene_rect_create(c->scene, 0, 0, c->isurgent ? urgentcolor : bordercolor);
+        c->border[i] = wlr_scene_rect_create(c->scene, 0, 0,
+                                             (float[])COLOR(colors[c->isurgent ? SchemeUrg : SchemeNorm][ColBorder]));
         c->border[i]->node.data = c;
     }
 
@@ -2852,6 +2824,7 @@ run(char *startup_cmd)
         if ((child_pid = fork()) < 0)
             die("startup: fork:");
         if (child_pid == 0) {
+            close(STDIN_FILENO);
             setsid();
             execl("/bin/sh", "/bin/sh", "-c", startup_cmd, NULL);
             die("startup: execl:");
@@ -3244,8 +3217,7 @@ setup(void)
 
     wlr_scene_set_presentation(scene, wlr_presentation_create(dpy, backend));
 
-    fcft_init(FCFT_LOG_COLORIZE_AUTO, 0, FCFT_LOG_CLASS_ERROR);
-    fcft_set_scaling_filter(FCFT_SCALING_FILTER_LANCZOS3);
+    drwl_init();
 
     status_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy), STDIN_FILENO,
                                                WL_EVENT_READABLE, status_in, NULL);
@@ -3713,6 +3685,8 @@ updatemons(struct wl_listener *listener, void *data)
     }
 
     /* Update bar */
+    if (stext[0] == '\0')
+        strncpy(stext, "dwl-"VERSION, sizeof(stext));
     wl_list_for_each(m, &mons, link) {
         updatebar(m);
         drawbar(m);
@@ -3738,16 +3712,16 @@ updatebar(Monitor *m)
     wlr_output_transformed_resolution(m->wlr_output, &rw, &rh);
     m->b.width = rw - 2 * sidepad;
     m->b.real_width = (int) ((float) m->b.width / m->wlr_output->scale);
-    if (m->b.scale == m->wlr_output->scale && m->font)
+    if (m->b.scale == m->wlr_output->scale && m->drw)
         return;
-    fcft_destroy(m->font);
+    drwl_destroy_font(m->drw->font);
     snprintf(fontattrs, sizeof(fontattrs), "dpi=%.2f", 96. * m->wlr_output->scale);
-    if (!(m->font = fcft_from_name(LENGTH(fonts), fonts, fontattrs)))
+    if (!(drwl_load_font(m->drw, LENGTH(fonts), fonts, fontattrs)))
         die("Could not load font");
 
     m->b.scale = m->wlr_output->scale;
-    m->lrpad = m->font->height;
-    m->b.height = m->font->height + 2;
+    m->lrpad = m->drw->font->height;
+    m->b.height = m->drw->font->height + 2;
     m->b.real_height = (int) ((float) m->b.height / m->wlr_output->scale);
 }
 
@@ -3772,7 +3746,7 @@ urgent(struct wl_listener *listener, void *data)
     drawbars();
 
     if (client_surface(c)->mapped)
-        client_set_border_color(c, urgentcolor);
+        client_set_border_color(c, (float[])COLOR(colors[SchemeUrg][ColBorder]));
 }
 
 void
@@ -4014,7 +3988,7 @@ void sethints(struct wl_listener *listener, void *data)
     drawbars();
 
     if (c->isurgent && surface && surface->mapped)
-        client_set_border_color(c, urgentcolor);
+       client_set_border_color(c, (float[])COLOR(colors[SchemeUrg][ColBorder]));
 }
 
 void xwaylandready(struct wl_listener *listener, void *data)
