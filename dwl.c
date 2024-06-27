@@ -93,8 +93,30 @@
 
 /* enums */
 enum {
+    /**
+     * 普通
+     */
     SchemeNorm,
+    /**
+     * 选中
+     */
     SchemeSel,
+    /**
+     * 普通标签
+     */
+    SchemeNormTag,
+    /**
+     * 选中的标签
+     */
+    SchemeSelTag,
+    /**
+     * 下划线
+     */
+    SchemeUnderline,
+    /**
+     * 状态栏文本
+     */
+    SchemeStatusText,
     SchemeUrg
 }; /* color schemes */
 enum {
@@ -1808,35 +1830,10 @@ dirtomon(enum wlr_direction dir)
     return selmon;
 }
 
-static void
-draw_rect(pixman_image_t *pix, int16_t x, int16_t y, uint16_t w, uint16_t h, int filled, pixman_color_t *bg)
-{
-    /*
-     * originally, i was using PIXMAN_OP_CLEAR and drawing
-     * a clear rectangle, however that was transparent beyond
-     * the bar, so a manually drawn bordered rectangle, made
-     * out of lines (thin recthangles) had to be used.
-     */
-    if (filled)
-        pixman_image_fill_rectangles(PIXMAN_OP_SRC, pix, bg, 1, &(pixman_rectangle16_t) {x, y, w, h});
-    else
-        pixman_image_fill_rectangles(
-                PIXMAN_OP_SRC, pix, bg, 4,
-                (pixman_rectangle16_t[4]) {
-                        {x,                     y,                     w, 1},
-                        {x,                     (int16_t) (y + h - 1), w, 1},
-                        {x,                     y,                     1, h},
-                        {(int16_t) (x + w - 1), y,                     1, h}
-                }
-        );
-}
-
 void
 drawbar(Monitor *m)
 {
     int x, w, status_w = 0;
-    int sel;
-    int boxs = m->drw->font->height / 9;
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
     int32_t stride, size;
@@ -1866,6 +1863,7 @@ drawbar(Monitor *m)
         }
         // status 宽度
         status_w = TEXTW(m, stext) - m->lrpad + 2; /* 2px right padding */
+        drwl_setscheme(m->drw, colors[SchemeStatusText]);
         drwl_text(m->drw, m->b.width - status_w, 0, status_w, m->b.height, 0, stext, 0);
     }
 
@@ -1881,20 +1879,25 @@ drawbar(Monitor *m)
     x = 0;
     c = focustop(m);
     for (i = 0; i < LENGTH(tags); i++) {
-        // 是否选中当前 tag
-        sel = (int) m->tagset[m->seltags] & 1 << i;
+        // occ & 1 << i : 当前标签下是否有 client 、 m->tagset[m->seltags] & 1 << i : 表示是否选中当前 tag
         if (!(occ & 1 << i || m->tagset[m->seltags] & 1 << i))
             continue;
         // 一个 tag 宽度
         w = TEXTW(m, tags[i]);
-        drwl_setscheme(m->drw, colors[m->tagset[m->seltags] & 1 << i ? SchemeSel : SchemeNorm]);
-        drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, tags[i], urg & 1 << i);
+        drwl_setscheme(m->drw, colors[m->tagset[m->seltags] & 1 << i ? SchemeSelTag : SchemeNormTag]);
+        drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, tags[i], (int) urg & 1 << i);
 
-        // occ & 1 << i : 当前标签下是否有 client
-        if (sel) {
-            drwl_rect(m->drw, x + boxs, boxs, boxw, boxw,
-                      m == selmon && c && c->tags & 1 << i,
-                      urg & 1 << i);
+        if (m->tagset[m->seltags] & 1 << i) {
+            drwl_setscheme(m->drw, colors[SchemeUnderline]);
+            drwl_rect(
+                    m->drw,
+                    x + 2,
+                    m->b.height - boxw,
+                    w + m->lrpad - 4,
+                    boxw,
+                    m == selmon && c && c->tags & 1 << i,
+                    (int) urg & 1 << i
+            );
         }
 
         x += w;

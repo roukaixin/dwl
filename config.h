@@ -25,6 +25,10 @@ static uint32_t colors[][3] = {
         /*               fg          bg          border    */
         [SchemeNorm] = {0xbbbbbbff, 0x222222ff, 0x444444ff},
         [SchemeSel]  = {0xeeeeeeff, 0x005577ff, 0x005577ff},
+        [SchemeNormTag]  = {0xbbbbbfu, 0x333333c0, 0x000000dd},
+        [SchemeSelTag]  = {0xeeeeeefu, 0x333333c0, 0x000000dd},
+        [SchemeUnderline]  = {0x7799AAff, 0, 0},
+        [SchemeStatusText]  = {0x000000fu, 0x00000088, 0},
         [SchemeUrg]  = {0, 0, 0x770000ff},
 };
 
