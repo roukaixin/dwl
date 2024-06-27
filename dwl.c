@@ -2624,7 +2624,7 @@ outputmgrapplyortest(struct wlr_output_configuration_v1 *config,
         wlr_output_configuration_v1_send_failed(config);
     wlr_output_configuration_v1_destroy(config);
 
-    /* TODO: use a wrapper function? */
+    /* https://codeberg.org/dwl/dwl/issues/577 */
     updatemons(NULL, NULL);
 }
 

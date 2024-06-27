@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `46ae0754`(24-6-5 at 下午2:42)，描述：`set preferred scale on creation (LayerShell)`
+更新最新代码 `1002ea04`(24-6-26 at 下午12:22)，描述：`add bugref about why we call updatemons in outputmgrapplyortest`
 
 # 安装
 
