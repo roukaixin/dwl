@@ -470,6 +470,9 @@ static Monitor *dirtomon(enum wlr_direction dir);
 
 static void drawbar(Monitor *m);
 
+/**
+ * 绘制全部显示屏 bar
+ */
 static void drawbars(void);
 
 static void focusclient(Client *c, int lift);
@@ -1858,12 +1861,11 @@ drawbar(Monitor *m)
     /* draw status first so it can be overdrawn by tags later */
     if (m == selmon) {  /* status is only drawn on selected monitor */
         if (stext[0] == '\0') {
-            strncpy(stext, "dwl-"
-            VERSION, sizeof(stext));
+            strncpy(stext, "^c#2D1B46^^b#335566^:) ^d^", sizeof(stext));
         }
         // status 宽度
         status_w = TEXTW(m, stext) - m->lrpad + 2; /* 2px right padding */
-        drwl_setscheme(m->drw, colors[SchemeStatusText]);
+        drwl_setscheme(m->drw, colors[SchemeNorm]);
         drwl_text(m->drw, m->b.width - status_w, 0, status_w, m->b.height, 0, stext, 0);
     }
 
@@ -1912,9 +1914,9 @@ drawbar(Monitor *m)
     if ((w = m->b.width - status_w - x) > m->b.height) {
         if (c) {
             drwl_setscheme(m->drw, colors[m == selmon ? SchemeSel : SchemeNorm]);
-            if (c && c->isfloating) {
-                drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, client_get_title(c), 0);
-            }
+            drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, client_get_title(c), 0);
+            if (c && c->isfloating)
+                drwl_rect(m->drw, x + 2, 2, boxw, boxw, 0, 0);
         } else {
             drwl_setscheme(m->drw, colors[SchemeNorm]);
             drwl_rect(m->drw, x, 0, w, m->b.height, 1, 1);
@@ -1931,9 +1933,7 @@ drawbar(Monitor *m)
     wlr_buffer_drop(&buf->base);
 }
 
-/**
- * 绘制全部显示屏 bar
- */
+
 void
 drawbars(void)
 {

@@ -5,30 +5,31 @@
                         (hex & 0xFF) / 255.0f }
 
 /* appearance */
-static const int sloppyfocus = 1;  /* focus follows mouse */
-static const int bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
-static const unsigned int gappi = 12; /* gap pixel between windows 窗口之间的间距 */
-static const unsigned int gappo = 12; /* gap pixel between windows 窗口与边缘的间距 */
-static const unsigned int borderpx = 1;  /* border pixel of windows */
-static const float rootcolor[] = COLOR(0x000000ff);
+static const int          sloppyfocus               = 1;  /* focus follows mouse */
+static const int          bypass_surface_visibility = 0;  /* 1 means idle inhibitors will disable idle tracking even if it's surface isn't visible  */
+static const unsigned int gappi                     = 12; /* gap pixel between windows 窗口之间的间距 */
+static const unsigned int gappo                     = 12; /* gap pixel between windows 窗口与边缘的间距 */
+static const unsigned int borderpx                  = 1;  /* border pixel of windows */
+static const int          showbar                   = 1; /* 0 means no bar */
+static const int          topbar                    = 1; /* 0 means bottom bar */
+static const int          vertpad                   = 5; /* vertical padding of bar (上下的间距) */
+static const int          sidepad                   = 5; /* horizontal padding of bar (左右的间距) */
+static const char         *fonts[]                  = {
+        "JetBrains Mono:style=ExtraLight,Regular:size=14:antialias=true:autohint=true"
+};
+static const float        rootcolor[]               = COLOR(0x000000ff);
 /* This conforms to the xdg-protocol. Set the alpha to zero to restore the old behavior */
-static const float fullscreen_bg[] = {0.1f, 0.1f, 0.1f, 0.0f}; /* You can also use glsl colors */
+static const float        fullscreen_bg[]           = {0.1f, 0.1f, 0.1f, 0.0f}; /* You can also use glsl colors */
 
-/* bar */
-static const int showbar = 1; /* 0 means no bar */
-static const int topbar = 1; /* 0 means bottom bar */
-static const int vertpad = 5; /* vertical padding of bar (上下的间距) */
-static const int sidepad = 5; /* horizontal padding of bar (左右的间距) */
-static const char *fonts[] = {"JetBrains Mono:style=ExtraLight,Regular:size=14:antialias=true:autohint=true"};
 
 static uint32_t colors[][3] = {
         /*               fg          bg          border    */
         [SchemeNorm] = {0xbbbbbbff, 0x222222ff, 0x444444ff},
         [SchemeSel]  = {0xeeeeeeff, 0x005577ff, 0x005577ff},
-        [SchemeNormTag]  = {0xbbbbbfu, 0x333333c0, 0x000000dd},
-        [SchemeSelTag]  = {0xeeeeeefu, 0x333333c0, 0x000000dd},
+        [SchemeNormTag]  = {0xbbbbbbff, 0x333333c0, 0x000000dd},
+        [SchemeSelTag]  = {0xeeeeeeff, 0x333333c0, 0x000000dd},
         [SchemeUnderline]  = {0x7799AAff, 0, 0},
-        [SchemeStatusText]  = {0x000000fu, 0x00000088, 0},
+        [SchemeStatusText]  = {0x000000ff, 0x00000088, 0},
         [SchemeUrg]  = {0, 0, 0x770000ff},
 };
 
@@ -54,7 +55,7 @@ static const Env envs[] = {
         /* variable			value */
         {"LANG",                                "zh_CN.UTF-8"},
         {"LANGUAGE",                            "zh_CN:en_US"},
-        {"XDG_CURRENT_DESKTOP",                 "dwl"},
+        {"XDG_CURRENT_DESKTOP",                 "wlroots"},
         {"GDK_BACKEND",                         "wayland"},
         {"QT_QPA_PLATFORM",                     "wayland"},
         {"SDL_VIDEODRIVER",                     "wayland"},
@@ -111,27 +112,27 @@ static const struct xkb_rule_names xkb_rules = {
 };
 
 /* numlock and capslock */
-static const int numlock = 1;
+static const int numlock  = 1;
 static const int capslock = 0;
 
-static const int repeat_rate = 25;
+static const int repeat_rate  = 25;
 static const int repeat_delay = 600;
 
 /* Trackpad */
-static const int tap_to_click = 1;
-static const int tap_and_drag = 1;
-static const int drag_lock = 1;
-static const int natural_scrolling = 0;
-static const int disable_while_typing = 1;
-static const int left_handed = 0;
-static const int middle_button_emulation = 0;
+static const int                                tap_to_click            = 1;
+static const int                                tap_and_drag            = 1;
+static const int                                drag_lock               = 1;
+static const int                                natural_scrolling       = 0;
+static const int                                disable_while_typing    = 1;
+static const int                                left_handed             = 0;
+static const int                                middle_button_emulation = 0;
 /* You can choose between:
 LIBINPUT_CONFIG_SCROLL_NO_SCROLL
 LIBINPUT_CONFIG_SCROLL_2FG
 LIBINPUT_CONFIG_SCROLL_EDGE
 LIBINPUT_CONFIG_SCROLL_ON_BUTTON_DOWN
 */
-static const enum libinput_config_scroll_method scroll_method = LIBINPUT_CONFIG_SCROLL_2FG;
+static const enum libinput_config_scroll_method scroll_method           = LIBINPUT_CONFIG_SCROLL_2FG;
 
 /* You can choose between:
 LIBINPUT_CONFIG_CLICK_METHOD_NONE
@@ -152,7 +153,7 @@ LIBINPUT_CONFIG_ACCEL_PROFILE_FLAT
 LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE
 */
 static const enum libinput_config_accel_profile accel_profile = LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE;
-static const double accel_speed = 0.0;
+static const double                             accel_speed   = 0.0;
 
 /* You can choose between:
 LIBINPUT_CONFIG_TAP_MAP_LRM -- 1/2/3 finger tap maps to left/right/middle
