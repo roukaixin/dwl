@@ -41,13 +41,16 @@ static int log_level = WLR_ERROR;
 
 /* Autostart */
 static const char *const autostart[] = {
-        "fcitx5", NULL,
+        "fcitx5", "-d",NULL,
         "Snipaste", NULL,
         "udiskie", NULL,
         "nm-applet", NULL,
         "blueman-applet", NULL,
         "/usr/lib/polkit-kde-authentication-agent-1", NULL,
         "mako", NULL,
+        "swww-daemon", "--no-cache", NULL,
+        // INTERVAL=5; while true; do find "$1" -type f -name '*.png' | while read -r img; do echo "$((RANDOM % 1000)):$img"; done | sort -n | cut -d':' -f2- | while read -r img; do swww img "$img"; sleep "$INTERVAL"; done; done
+        "/bin/sh","-c", "swww img ~/wm/wallpaper/01.png", NULL,
         NULL /* terminate */
 };
 /* wlroots */
