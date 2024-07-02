@@ -71,6 +71,8 @@ static const Env envs[] = {
         {"LIBVA_DRIVER_NAME",                   "nvidia"},
         {"NVD_BACKEND",                         "direct"},
         {"WLR_DRM_NO_ATOMIC",                   "1"},
+        {"SWWW_TRANSITION_FPS",                   "60"},
+        {"SWWW_TRANSITION_STEP",                   "2"},
 };
 
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
