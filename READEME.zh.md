@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `1002ea04`(24-6-26 at 下午12:22)，描述：`add bugref about why we call updatemons in outputmgrapplyortest`
+更新最新代码 `2b4893a0`(24-6-30 at 上午8:31)，描述：`add a note about having at least a dummy rule for `rules[]``
 
 # 安装
 
