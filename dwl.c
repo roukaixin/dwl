@@ -931,8 +931,9 @@ autostartexec(void)
     size_t i = 0;
 
     /* count entries */
-    for (p = autostart; *p; autostart_len++, p++)
+    for (p = autostart; *p; autostart_len++, p++) {
         while (*++p);
+    }
 
     autostart_pids = calloc(autostart_len, sizeof(pid_t));
     for (p = autostart; *p; i++, p++) {

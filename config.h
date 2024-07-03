@@ -49,8 +49,7 @@ static const char *const autostart[] = {
         "/usr/lib/polkit-kde-authentication-agent-1", NULL,
         "mako", NULL,
         "swww-daemon", "--no-cache", NULL,
-        // INTERVAL=5; while true; do find "$1" -type f -name '*.png' | while read -r img; do echo "$((RANDOM % 1000)):$img"; done | sort -n | cut -d':' -f2- | while read -r img; do swww img "$img"; sleep "$INTERVAL"; done; done
-        "/bin/sh","-c", "swww img ~/wm/wallpaper/01.png", NULL,
+        "sh", "-c", "$DWL/script/wallpaper", NULL,
         NULL /* terminate */
 };
 /* wlroots */
@@ -74,8 +73,7 @@ static const Env envs[] = {
         {"LIBVA_DRIVER_NAME",                   "nvidia"},
         {"NVD_BACKEND",                         "direct"},
         {"WLR_DRM_NO_ATOMIC",                   "1"},
-        {"SWWW_TRANSITION_FPS",                   "60"},
-        {"SWWW_TRANSITION_STEP",                   "2"},
+        {"DWL",                   "/home/dell/wm/dwl"},
 };
 
 /* NOTE: ALWAYS keep a rule declared even if you don't use rules (e.g leave at least one example) */
