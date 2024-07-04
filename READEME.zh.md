@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `2b4893a0`(24-6-30 at 上午8:31)，描述：`add a note about having at least a dummy rule for `rules[]``
+更新最新代码 `aede3b29`，描述：`Fix applybounds`
 
 # 安装
 
