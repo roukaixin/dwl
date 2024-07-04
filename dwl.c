@@ -1078,8 +1078,7 @@ buttonpress(struct wl_listener *listener, void *data)
     }
     /* If the event wasn't handled by the compositor, notify the client with
      * pointer focus that a button press has occurred */
-    wlr_seat_pointer_notify_button(seat, event->time_msec, event->button,
-                                   event->state);
+    wlr_seat_pointer_notify_button(seat, event->time_msec, event->button, event->state);
 }
 
 void
@@ -1197,10 +1196,12 @@ closemon(Monitor *m)
     wl_list_for_each(c, &clients, link) {
         if (c->isfloating && c->geom.x > m->m.width)
             resize(c,
-                   (struct wlr_box) {.x      = c->geom.x - m->w.width,
-                           .y      = c->geom.y,
-                           .width  = c->geom.width,
-                           .height = c->geom.height},
+                   (struct wlr_box) {
+                       .x      = c->geom.x - m->w.width,
+                       .y      = c->geom.y,
+                       .width  = c->geom.width,
+                       .height = c->geom.height
+                   },
                    0);
         if (c->mon == m)
             setmon(c, selmon, c->tags);
@@ -1214,24 +1215,20 @@ commitlayersurfacenotify(struct wl_listener *listener, void *data)
 {
     LayerSurface *l = wl_container_of(listener, l, surface_commit);
     struct wlr_layer_surface_v1 *layer_surface = l->layer_surface;
-    struct wlr_scene_tree *scene_layer =
-            layers[layermap[layer_surface->current.layer]];
+    struct wlr_scene_tree *scene_layer = layers[layermap[layer_surface->current.layer]];
 
-    if (layer_surface->current.committed == 0 &&
-        l->mapped == layer_surface->surface->mapped)
+    if (layer_surface->current.committed == 0 && l->mapped == layer_surface->surface->mapped)
         return;
     l->mapped = layer_surface->surface->mapped;
 
     if (scene_layer != l->scene->node.parent) {
         wlr_scene_node_reparent(&l->scene->node, scene_layer);
         wl_list_remove(&l->link);
-        wl_list_insert(&l->mon->layers[layer_surface->current.layer],
-                       &l->link);
+        wl_list_insert(&l->mon->layers[layer_surface->current.layer], &l->link);
         wlr_scene_node_reparent(
                 &l->popups->node,
-                (layer_surface->current.layer < ZWLR_LAYER_SHELL_V1_LAYER_TOP
-                 ? layers[LyrTop]
-                 : scene_layer));
+                layer_surface->current.layer < ZWLR_LAYER_SHELL_V1_LAYER_TOP ? layers[LyrTop] : scene_layer
+        );
     }
 
     arrangelayers(l->mon);
@@ -1270,8 +1267,7 @@ createdecoration(struct wl_listener *listener, void *data)
     Client *c = deco->toplevel->base->data;
     c->decoration = deco;
 
-    LISTEN(&deco->events.request_mode, &c->set_decoration_mode,
-           requestdecorationmode);
+    LISTEN(&deco->events.request_mode, &c->set_decoration_mode, requestdecorationmode);
     LISTEN(&deco->events.destroy, &c->destroy_decoration, destroydecoration);
 
     requestdecorationmode(&c->set_decoration_mode, deco);
@@ -1310,8 +1306,7 @@ createkeyboardgroup(void)
 
     /* Prepare an XKB keymap and assign it to the keyboard group. */
     context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    if (!(keymap = xkb_keymap_new_from_names(context, &xkb_rules,
-                                             XKB_KEYMAP_COMPILE_NO_FLAGS)))
+    if (!(keymap = xkb_keymap_new_from_names(context, &xkb_rules, XKB_KEYMAP_COMPILE_NO_FLAGS)))
         die("failed to compile keymap");
 
     wlr_keyboard_set_keymap(&group->wlr_group->keyboard, keymap);
@@ -1337,8 +1332,7 @@ createkeyboardgroup(void)
     LISTEN(&group->wlr_group->keyboard.events.key, &group->key, keypress);
     LISTEN(&group->wlr_group->keyboard.events.modifiers, &group->modifiers, keypressmod);
 
-    group->key_repeat_source = wl_event_loop_add_timer(
-            wl_display_get_event_loop(dpy), keyrepeat, group);
+    group->key_repeat_source = wl_event_loop_add_timer(wl_display_get_event_loop(dpy), keyrepeat, group);
 
     /* A seat can only have one keyboard, but this is a limitation of the
      * Wayland protocol - not wlroots. We assign all connected keyboards to the
@@ -1355,8 +1349,7 @@ createlayersurface(struct wl_listener *listener, void *data)
     struct wlr_layer_surface_v1 *layer_surface = data;
     LayerSurface *l;
     struct wlr_surface *surface = layer_surface->surface;
-    struct wlr_scene_tree *scene_layer =
-            layers[layermap[layer_surface->pending.layer]];
+    struct wlr_scene_tree *scene_layer = layers[layermap[layer_surface->pending.layer]];
     struct wlr_layer_surface_v1_state old_state;
 
     if (!layer_surface->output && !(layer_surface->output = selmon ? selmon->wlr_output : NULL)) {
@@ -1368,18 +1361,15 @@ createlayersurface(struct wl_listener *listener, void *data)
     l->type = LayerShell;
     LISTEN(&surface->events.commit, &l->surface_commit, commitlayersurfacenotify);
     LISTEN(&surface->events.unmap, &l->unmap, unmaplayersurfacenotify);
-    LISTEN(&layer_surface->events.destroy, &l->destroy,
-           destroylayersurfacenotify);
+    LISTEN(&layer_surface->events.destroy, &l->destroy, destroylayersurfacenotify);
 
     l->layer_surface = layer_surface;
     l->mon = layer_surface->output->data;
-    l->scene_layer =
-            wlr_scene_layer_surface_v1_create(scene_layer, layer_surface);
+    l->scene_layer = wlr_scene_layer_surface_v1_create(scene_layer, layer_surface);
     l->scene = l->scene_layer->tree;
     l->popups = surface->data = wlr_scene_tree_create(
-            layer_surface->current.layer < ZWLR_LAYER_SHELL_V1_LAYER_TOP
-            ? layers[LyrTop]
-            : scene_layer);
+        layer_surface->current.layer < ZWLR_LAYER_SHELL_V1_LAYER_TOP ? layers[LyrTop] : scene_layer
+    );
     l->scene->node.data = l->popups->node.data = l;
 
     wl_list_insert(&l->mon->layers[layer_surface->pending.layer], &l->link);
@@ -1403,16 +1393,14 @@ createlocksurface(struct wl_listener *listener, void *data)
     SessionLock *lock = wl_container_of(listener, lock, new_surface);
     struct wlr_session_lock_surface_v1 *lock_surface = data;
     Monitor *m = lock_surface->output->data;
-    struct wlr_scene_tree *scene_tree = lock_surface->surface->data =
-                                                wlr_scene_subsurface_tree_create(lock->scene, lock_surface->surface);
+    struct wlr_scene_tree *scene_tree = lock_surface->surface->data
+            = wlr_scene_subsurface_tree_create(lock->scene, lock_surface->surface);
     m->lock_surface = lock_surface;
 
     wlr_scene_node_set_position(&scene_tree->node, m->m.x, m->m.y);
-    wlr_session_lock_surface_v1_configure(lock_surface, m->m.width,
-                                          m->m.height);
+    wlr_session_lock_surface_v1_configure(lock_surface, m->m.width, m->m.height);
 
-    LISTEN(&lock_surface->events.destroy, &m->destroy_lock_surface,
-           destroylocksurface);
+    LISTEN(&lock_surface->events.destroy, &m->destroy_lock_surface, destroylocksurface);
 
     if (m == selmon)
         client_notify_enter(lock_surface->surface, wlr_seat_get_keyboard(seat));
@@ -1538,8 +1526,8 @@ createnotify(struct wl_listener *listener, void *data)
         struct wlr_box box;
         if (toplevel_from_wlr_surface(popup->base->surface, &c, &l) < 0)
             return;
-        popup->base->surface->data =
-                wlr_scene_xdg_surface_create(popup->parent->data, popup->base);
+        popup->base->surface->data = wlr_scene_xdg_surface_create(
+                popup->parent->data, popup->base);
         if ((l && !l->mon) || (c && !c->mon))
             return;
         box = l ? l->mon->m : c->mon->w;
@@ -1556,18 +1544,17 @@ createnotify(struct wl_listener *listener, void *data)
     c->bw = borderpx;
 
     wlr_xdg_toplevel_set_wm_capabilities(
-            xdg_surface->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
+        xdg_surface->toplevel,
+        WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN
+    );
 
     LISTEN(&xdg_surface->events.destroy, &c->destroy, destroynotify);
     LISTEN(&xdg_surface->surface->events.commit, &c->commit, commitnotify);
     LISTEN(&xdg_surface->surface->events.map, &c->map, mapnotify);
     LISTEN(&xdg_surface->surface->events.unmap, &c->unmap, unmapnotify);
-    LISTEN(&xdg_surface->toplevel->events.request_fullscreen, &c->fullscreen,
-           fullscreennotify);
-    LISTEN(&xdg_surface->toplevel->events.request_maximize, &c->maximize,
-           maximizenotify);
-    LISTEN(&xdg_surface->toplevel->events.set_title, &c->set_title,
-           updatetitle);
+    LISTEN(&xdg_surface->toplevel->events.request_fullscreen, &c->fullscreen, fullscreennotify);
+    LISTEN(&xdg_surface->toplevel->events.request_maximize, &c->maximize, maximizenotify);
+    LISTEN(&xdg_surface->toplevel->events.set_title, &c->set_title, updatetitle);
 }
 
 void
@@ -3687,8 +3674,7 @@ updatemons(struct wl_listener *listener, void *data)
 
     /* Update bar */
     if (stext[0] == '\0')
-        strncpy(stext, "dwl-"
-    VERSION, sizeof(stext));
+        strncpy(stext, "dwl-"VERSION, sizeof(stext));
     wl_list_for_each(m, &mons, link) {
         updatebar(m);
         drawbar(m);
@@ -3813,8 +3799,7 @@ virtualpointer(struct wl_listener *listener, void *data)
 
     wlr_cursor_attach_input_device(cursor, &pointer.base);
     if (event->suggested_output)
-        wlr_cursor_map_input_to_output(cursor, &pointer.base,
-                                       event->suggested_output);
+        wlr_cursor_map_input_to_output(cursor, &pointer.base, event->suggested_output);
 }
 
 Monitor *
@@ -4045,8 +4030,7 @@ main(int argc, char *argv[])
         else if (c == 'd')
             log_level = WLR_DEBUG;
         else if (c == 'v')
-            die("dwl "
-        VERSION);
+            die("dwl "VERSION);
         else
         goto usage;
     }
