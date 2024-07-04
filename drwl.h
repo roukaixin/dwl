@@ -141,9 +141,7 @@ drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h,
 }
 
 static void
-drwl_rect(Drwl *drwl,
-		int x, int y, unsigned int w, unsigned int h,
-		int filled, int invert)
+drwl_rect(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, int filled, int invert)
 {
 	pixman_color_t clr;
 	if (!drwl || !drwl->scheme || !drwl->pix)
@@ -163,9 +161,7 @@ drwl_rect(Drwl *drwl,
 }
 
 static int
-drwl_text(Drwl *drwl,
-		int x, int y, unsigned int w, unsigned int h,
-		unsigned int lpad, const char *text, int invert)
+drwl_text(Drwl *drwl, int x, int y, unsigned int w, unsigned int h, unsigned int lpad, const char *text, int invert)
 {
 	int ty;
 	int utf8charlen, render = x || y || w || h;
@@ -254,7 +250,7 @@ drwl_text(Drwl *drwl,
 static unsigned int
 drwl_font_getwidth(Drwl *drwl, const char *text)
 {
-	if (!drwl || !drwl->font || !text)
+	if (drwl == NULL || drwl->font == NULL || text == NULL)
 		return 0;
 	return drwl_text(drwl, 0, 0, 0, 0, 0, text, 0);
 }

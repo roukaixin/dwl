@@ -116,6 +116,13 @@ enum {
      * 状态栏文本
      */
     SchemeStatusText,
+    /**
+     * 空白的 bar
+     */
+    SchemeBarEmpty,
+    /**
+     *
+     */
     SchemeUrg
 }; /* color schemes */
 enum {
@@ -658,6 +665,9 @@ static struct wlr_pointer_constraint_v1 *active_constraint;
 static struct wlr_cursor *cursor;
 static struct wlr_xcursor_manager *cursor_mgr;
 
+/**
+ * 全局背景颜色
+ */
 static struct wlr_scene_rect *root_bg;
 static struct wlr_session_lock_manager_v1 *session_lock_mgr;
 static struct wlr_scene_rect *locked_bg;
@@ -1828,15 +1838,16 @@ dirtomon(enum wlr_direction dir)
 void
 drawbar(Monitor *m)
 {
-    int x, w, status_w = 0;
+    int x, w, status_w = 0, empty_w;
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
     int32_t stride, size;
     Client *c;
     Buffer *buf;
+    char max_title_w[254];
 
     // 显示屏不存在或者不显示 bar，直接退出
-    if (!m || !m->showbar) {
+    if (m == NULL || !m->showbar) {
         return;
     }
 
@@ -1902,18 +1913,39 @@ drawbar(Monitor *m)
     drwl_setscheme(m->drw, colors[SchemeNorm]);
     x = drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, m->ltsymbol, 0);
 
+    for (i = 0; i < bartitlew; i++) {
+        max_title_w[i] = ' ';
+    }
     // 绘制 title
-    if ((w = m->b.width - status_w - x) > m->b.height) {
-        if (c) {
+    wl_list_for_each(c, &clients, link) {
+        if (c->mon != m && !VISIBLEON(c, m))
+            continue;
+        w = MIN(TEXTW(m, client_get_title(c)), TEXTW(m, max_title_w));
+        if (m->b.width - status_w - x > m->b.height + (int)TEXTW(m, "...")) {
             drwl_setscheme(m->drw, colors[m == selmon ? SchemeSel : SchemeNorm]);
             drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, client_get_title(c), 0);
             if (c && c->isfloating)
                 drwl_rect(m->drw, x + 2, 2, boxw, boxw, 0, 0);
-        } else {
-            drwl_setscheme(m->drw, colors[SchemeNorm]);
-            drwl_rect(m->drw, x, 0, w, m->b.height, 1, 1);
+            x += w;
         }
     }
+    empty_w = m->b.width - status_w - x;
+    if (empty_w) {
+        drwl_setscheme(m->drw, colors[SchemeBarEmpty]);
+        drwl_rect(m->drw, x, 0, empty_w, m->b.height, 1, 0);
+    }
+
+    // if ((w = m->b.width - status_w - x) > m->b.height) {
+    //     if (c) {
+    //         drwl_setscheme(m->drw, colors[m == selmon ? SchemeSel : SchemeNorm]);
+    //         drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, client_get_title(c), 0);
+    //         if (c && c->isfloating)
+    //             drwl_rect(m->drw, x + 2, 2, boxw, boxw, 0, 0);
+    //     } else {
+    //         drwl_setscheme(m->drw, colors[SchemeNorm]);
+    //         drwl_rect(m->drw, x, 0, w, m->b.height, 1, 1);
+    //     }
+    // }
 
     drwl_finish_drawing(m->drw);
     wlr_scene_buffer_set_dest_size(m->scene_buffer, m->b.real_width, m->b.real_height);
@@ -2788,7 +2820,7 @@ run(char *startup_cmd)
 {
     /* Add a Unix socket to the Wayland display. */
     const char *socket = wl_display_add_socket_auto(dpy);
-    if (!socket)
+    if (socket == NULL)
         die("startup: display_add_socket_auto");
     setenv("WAYLAND_DISPLAY", socket, 1);
     for (size_t i = 0; i < LENGTH(envs); i++) {
@@ -3002,11 +3034,17 @@ setsel(struct wl_listener *listener, void *data)
 void
 setup(void)
 {
-    int i, sig[] = {SIGCHLD, SIGINT, SIGTERM, SIGPIPE};
-    struct sigaction sa = {.sa_flags = SA_RESTART, .sa_handler = handlesig};
+    // sig : 信号
+    int i, sig[] = { SIGCHLD, SIGINT, SIGTERM, SIGPIPE };
+    struct sigaction sa = {
+        .sa_flags = SA_RESTART,
+        .sa_handler = handlesig
+    };
+    // 清除 sig 信号
     sigemptyset(&sa.sa_mask);
 
     for (i = 0; i < (int) LENGTH(sig); i++)
+        // 设置 sig 信号
         sigaction(sig[i], &sa, NULL);
 
     // 初始化日志
@@ -3022,7 +3060,8 @@ setup(void)
      * output hardware. The autocreate option will choose the most suitable
      * backend based on the current environment, such as opening an X11 window
      * if an X11 server is running. */
-    if (!(backend = wlr_backend_autocreate(dpy, &session)))
+    backend = wlr_backend_autocreate(dpy, &session);
+    if (backend == NULL)
         die("couldn't create backend");
 
     /**
@@ -3040,7 +3079,8 @@ setup(void)
      * can also specify a renderer using the WLR_RENDERER env var.
      * The renderer is responsible for defining the various pixel formats it
      * supports for shared memory, this configures that for clients. */
-    if (!(drw = wlr_renderer_autocreate(backend)))
+    drw = wlr_renderer_autocreate(backend);
+    if (drw == NULL)
         die("couldn't create renderer");
 
     /* Create shm, drm and linux_dmabuf interfaces by ourselves.
@@ -3053,14 +3093,17 @@ setup(void)
     if (wlr_renderer_get_dmabuf_texture_formats(drw)) {
         wlr_drm_create(dpy, drw);
         wlr_scene_set_linux_dmabuf_v1(
-                scene, wlr_linux_dmabuf_v1_create_with_renderer(dpy, 4, drw));
+                scene,
+                wlr_linux_dmabuf_v1_create_with_renderer(dpy, 4, drw)
+        );
     }
 
     /* Autocreates an allocator for us.
      * The allocator is the bridge between the renderer and the backend. It
      * handles the buffer creation, allowing wlroots to render onto the
      * screen */
-    if (!(alloc = wlr_allocator_autocreate(backend, drw)))
+    alloc = wlr_allocator_autocreate(backend, drw);
+    if (alloc == NULL)
         die("couldn't create allocator");
 
     /* This creates some hands-off wlroots interfaces. The compositor is
@@ -3124,9 +3167,17 @@ setup(void)
     session_lock_mgr = wlr_session_lock_manager_v1_create(dpy);
     wl_signal_add(&session_lock_mgr->events.new_lock, &lock_listener);
     LISTEN_STATIC(&session_lock_mgr->events.destroy, destroysessionmgr);
-    locked_bg =
-            wlr_scene_rect_create(layers[LyrBlock], sgeom.width, sgeom.height,
-                                  (float[4]) {0.1f, 0.1f, 0.1f, 1.0f});
+    locked_bg = wlr_scene_rect_create(
+        layers[LyrBlock],
+        sgeom.width,
+        sgeom.height,
+        (float[4]) {
+            0.1f,
+            0.1f,
+            0.1f,
+            1.0f
+        }
+    );
     wlr_scene_node_set_enabled(&locked_bg->node, 0);
 
     /* Use decoration protocols to negotiate server-side decorations */
@@ -3183,11 +3234,9 @@ setup(void)
      */
     LISTEN_STATIC(&backend->events.new_input, inputdevice);
     virtual_keyboard_mgr = wlr_virtual_keyboard_manager_v1_create(dpy);
-    LISTEN_STATIC(&virtual_keyboard_mgr->events.new_virtual_keyboard,
-                  virtualkeyboard);
+    LISTEN_STATIC(&virtual_keyboard_mgr->events.new_virtual_keyboard, virtualkeyboard);
     virtual_pointer_mgr = wlr_virtual_pointer_manager_v1_create(dpy);
-    LISTEN_STATIC(&virtual_pointer_mgr->events.new_virtual_pointer,
-                  virtualpointer);
+    LISTEN_STATIC(&virtual_pointer_mgr->events.new_virtual_pointer, virtualpointer);
 
     seat = wlr_seat_create(dpy, "seat0");
     LISTEN_STATIC(&seat->events.request_set_cursor, setcursor);
@@ -3207,8 +3256,13 @@ setup(void)
 
     drwl_init();
 
-    status_event_source = wl_event_loop_add_fd(wl_display_get_event_loop(dpy), STDIN_FILENO,
-                                               WL_EVENT_READABLE, status_in, NULL);
+    status_event_source = wl_event_loop_add_fd(
+        wl_display_get_event_loop(dpy),
+        STDIN_FILENO,
+        WL_EVENT_READABLE,
+        status_in,
+        NULL
+    );
 
     /* Make sure XWayland clients don't connect to the parent X server,
      * e.g when running in the x11 backend or the wayland backend and the
@@ -4024,6 +4078,7 @@ main(int argc, char *argv[])
     char *startup_cmd = NULL;
     int c;
 
+    // 短参数 -s(需要参数值) -h -d -v，如果短参数不存在退出循环
     while ((c = getopt(argc, argv, "s:hdv")) != -1) {
         if (c == 's')
             startup_cmd = optarg;
@@ -4032,21 +4087,22 @@ main(int argc, char *argv[])
         else if (c == 'v')
             die("dwl "VERSION);
         else
-        goto usage;
+            goto usage;
     }
+    // optind : 最后一个未知选项
     if (optind < argc)
+        // 短参数比在 getopt 定义中的还多
         goto usage;
 
     /*
      * Wayland requires XDG_RUNTIME_DIR for creating its communications socket
      */
-    if (!getenv("XDG_RUNTIME_DIR"))
+    if (getenv("XDG_RUNTIME_DIR") == NULL)
         die("XDG_RUNTIME_DIR must be set");
     setup();
     run(startup_cmd);
     cleanup();
     return EXIT_SUCCESS;
 
-    usage:
-    die("Usage: %s [-v] [-d] [-s startup command]", argv[0]);
+    usage: die("Usage: %s [-v] [-d] [-s startup command]", argv[0]);
 }

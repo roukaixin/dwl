@@ -20,17 +20,19 @@ static const char         *fonts[]                  = {
 static const float        rootcolor[]               = COLOR(0x000000ff);
 /* This conforms to the xdg-protocol. Set the alpha to zero to restore the old behavior */
 static const float        fullscreen_bg[]           = {0.1f, 0.1f, 0.1f, 0.0f}; /* You can also use glsl colors */
+static const unsigned int bartitlew                 = 10;
 
 
 static uint32_t colors[][3] = {
-        /*               fg          bg          border    */
-        [SchemeNorm] = {0xbbbbbbff, 0x222222ff, 0x444444ff},
-        [SchemeSel]  = {0xeeeeeeff, 0x005577ff, 0x005577ff},
-        [SchemeNormTag]  = {0xbbbbbbff, 0x333333c0, 0x000000dd},
-        [SchemeSelTag]  = {0xeeeeeeff, 0x333333c0, 0x000000dd},
-        [SchemeUnderline]  = {0x7799AAff, 0, 0},
-        [SchemeStatusText]  = {0x000000ff, 0x00000088, 0},
-        [SchemeUrg]  = {0, 0, 0x770000ff},
+        /*                              fg          bg          border    */
+        [SchemeNorm]            = { 0xbbbbbbff, 0x333333c0, 0x444444dd },
+        [SchemeSel]             = { 0xffffffff, 0x37474Fc0, 0x42A5F5dd },
+        [SchemeNormTag]         = { 0xbbbbbbff, 0x333333c0, 0x000000dd },
+        [SchemeSelTag]          = { 0xeeeeeeff, 0x333333c0, 0x000000dd },
+        [SchemeUnderline]       = { 0x7799AAff, 0,          0 },
+        [SchemeStatusText]      = { 0x000000ff, 0x00000088, 0 },
+        [SchemeBarEmpty]        = { 0x33333333,          0x11111111, 0x33333333 },
+        [SchemeUrg]             = { 0,          0,          0x770000ff },
 };
 
 /* tagging - TAGCOUNT must be no greater than 31 */
