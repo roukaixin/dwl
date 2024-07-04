@@ -5,6 +5,7 @@
 #include <libdrm/drm_fourcc.h>
 #include <libinput.h>
 #include <linux/input-event-codes.h>
+#include <math.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,8 +76,6 @@
 /* macros */
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
-#define ROUND(X) ((int) ((X < 0) ? (X - 0.5) : (X + 0.5)))
-#define CEIL(X)                 ((int)((X < 0) ? (X) : ((int)X == X) ? (X) : ((int)X + 1)))
 #define CLEANMASK(mask) (mask & ~WLR_MODIFIER_CAPS)
 #define VISIBLEON(C, M)                                                        \
         ((M) && (C)->mon == (M) && ((C)->tags & (M)->tagset[ (M)->seltags ]))
@@ -256,7 +255,6 @@ typedef struct {
     struct wlr_layer_surface_v1 *layer_surface;
 
     struct wl_listener destroy;
-    struct wl_listener map;
     struct wl_listener unmap;
     struct wl_listener surface_commit;
 } LayerSurface;
@@ -507,8 +505,6 @@ static void killclient(const Arg *arg);
 
 static void locksession(struct wl_listener *listener, void *data);
 
-static void maplayersurfacenotify(struct wl_listener *listener, void *data);
-
 static void mapnotify(struct wl_listener *listener, void *data);
 
 static void maximizenotify(struct wl_listener *listener, void *data);
@@ -740,9 +736,9 @@ applybounds(Client *c, struct wlr_box *bbox)
         c->geom.x = bbox->x + bbox->width - c->geom.width;
     if (c->geom.y >= bbox->y + bbox->height)
         c->geom.y = bbox->y + bbox->height - c->geom.height;
-    if (c->geom.x + c->geom.width + 2 * (int) c->bw <= bbox->x)
+    if (c->geom.x + c->geom.width <= bbox->x)
         c->geom.x = bbox->x;
-    if (c->geom.y + c->geom.height + 2 * (int) c->bw <= bbox->y)
+    if (c->geom.y + c->geom.height <= bbox->y)
         c->geom.y = bbox->y;
 }
 
@@ -1050,6 +1046,7 @@ buttonpress(struct wl_listener *listener, void *data)
     switch (event->state) {
         case WLR_BUTTON_PRESSED:
             cursor_mode = CurPressed;
+            selmon = xytomon(cursor->x, cursor->y);
             if (locked)
                 break;
 
@@ -1248,6 +1245,19 @@ commitnotify(struct wl_listener *listener, void *data)
 {
     Client *c = wl_container_of(listener, c, commit);
 
+    if (c->surface.xdg->initial_commit) {
+        /*
+         * Get the monitor this client will be rendered on
+         * Note that if the user set a rule in which the client is placed on
+         * a different monitor based on its title this will likely select
+         * a wrong monitor.
+         */
+        applyrules(c);
+        wlr_surface_set_preferred_buffer_scale(client_surface(c), (int)ceilf(c->mon->wlr_output->scale));
+        wlr_fractional_scale_v1_notify_scale(client_surface(c), c->mon->wlr_output->scale);
+        setmon(c, NULL, 0); /* Make sure to reapply rules in mapnotify() */
+    }
+
     if (client_surface(c)->mapped && c->mon)
         resize(c, c->geom, (c->isfloating && !c->isfullscreen));
 
@@ -1359,9 +1369,7 @@ createlayersurface(struct wl_listener *listener, void *data)
 
     l = layer_surface->data = ecalloc(1, sizeof(*l));
     l->type = LayerShell;
-    LISTEN(&surface->events.commit, &l->surface_commit,
-           commitlayersurfacenotify);
-    LISTEN(&surface->events.map, &l->map, maplayersurfacenotify);
+    LISTEN(&surface->events.commit, &l->surface_commit, commitlayersurfacenotify);
     LISTEN(&surface->events.unmap, &l->unmap, unmaplayersurfacenotify);
     LISTEN(&layer_surface->events.destroy, &l->destroy,
            destroylayersurfacenotify);
@@ -1380,7 +1388,7 @@ createlayersurface(struct wl_listener *listener, void *data)
     wl_list_insert(&l->mon->layers[layer_surface->pending.layer], &l->link);
     wlr_surface_send_enter(surface, layer_surface->output);
     wlr_fractional_scale_v1_notify_scale(surface, l->mon->wlr_output->scale);
-    wlr_surface_set_preferred_buffer_scale(surface, CEIL(l->mon->wlr_output->scale));
+    wlr_surface_set_preferred_buffer_scale(surface, (int)ceilf(l->mon->wlr_output->scale));
 
     /* Temporarily set the layer's current state to pending
      * so that we can easily arrange it
@@ -1699,7 +1707,6 @@ destroylayersurfacenotify(struct wl_listener *listener, void *data)
 
     wl_list_remove(&l->link);
     wl_list_remove(&l->destroy.link);
-    wl_list_remove(&l->map.link);
     wl_list_remove(&l->unmap.link);
     wl_list_remove(&l->surface_commit.link);
     wlr_scene_node_destroy(&l->scene->node);
@@ -2287,12 +2294,6 @@ locksession(struct wl_listener *listener, void *data)
 }
 
 void
-maplayersurfacenotify(struct wl_listener *listener, void *data)
-{
-    motionnotify(0, NULL, 0, 0, 0, 0);
-}
-
-void
 mapnotify(struct wl_listener *listener, void *data)
 {
     /* Called when the surface is mapped, or ready to display on-screen. */
@@ -2481,16 +2482,15 @@ motionnotify(uint32_t time, struct wlr_input_device *device,
     }
 
     /* Update drag icon's position */
-    wlr_scene_node_set_position(&drag_icon->node, ROUND(cursor->x),
-                                ROUND(cursor->y));
+    wlr_scene_node_set_position(&drag_icon->node, (int)round(cursor->x), (int)round(cursor->y));
 
     /* If we are currently grabbing the mouse, handle and return */
     if (cursor_mode == CurMove) {
         /* Move the grabbed client to the new position. */
         resize(grabc,
                (struct wlr_box) {
-                       .x      = ROUND(cursor->x) - grabcx,
-                       .y      = ROUND(cursor->y) - grabcy,
+                       .x      = (int)round(cursor->x) - grabcx,
+                       .y      = (int)round(cursor->y) - grabcy,
                        .width  = grabc->geom.width,
                        .height = grabc->geom.height
                },
@@ -2501,8 +2501,8 @@ motionnotify(uint32_t time, struct wlr_input_device *device,
                (struct wlr_box) {
                        .x      = grabc->geom.x,
                        .y      = grabc->geom.y,
-                       .width  = ROUND(cursor->x) - grabc->geom.x,
-                       .height = ROUND(cursor->y) - grabc->geom.y
+                       .width  = (int)round(cursor->x) - grabc->geom.x,
+                       .height = (int)round(cursor->y) - grabc->geom.y
                },
                1);
         return;
@@ -2545,8 +2545,8 @@ moveresize(const Arg *arg)
     setfloating(grabc, 1);
     switch (cursor_mode = arg->ui) {
         case CurMove:
-            grabcx = ROUND(cursor->x) - grabc->geom.x;
-            grabcy = ROUND(cursor->y) - grabc->geom.y;
+            grabcx = (int)round(cursor->x) - grabc->geom.x;
+            grabcy = (int)round(cursor->y) - grabc->geom.y;
             wlr_cursor_set_xcursor(cursor, cursor_mgr, "fleur");
             break;
         case CurResize:
@@ -2773,7 +2773,7 @@ resize(Client *c, struct wlr_box geo, int interact)
     struct wlr_box *bbox;
     struct wlr_box clip;
 
-    if (!c->mon)
+    if (!c->mon || !c->scene)
         return;
 
     bbox = interact ? &sgeom : &c->mon->w;
@@ -2828,6 +2828,12 @@ run(char *startup_cmd)
             die("startup: execl:");
         }
     }
+
+
+    /* Mark stdout as non-blocking to avoid people who does not close stdin
+     * nor consumes it in their startup script getting dwl frozen */
+    if (fd_set_nonblock(STDOUT_FILENO) < 0)
+        close(STDOUT_FILENO);
 
     /* At this point the outputs are initialized, choose initial selmon based on
      * cursor position, and set default cursor image */
@@ -2887,7 +2893,7 @@ setfloating(Client *c, int floating)
     Client *p = client_get_parent(c);
     c->isfloating = floating;
     /* If in floating layout do not change the client's layer */
-    if (!c->mon || !c->mon->lt[c->mon->sellt]->arrange)
+    if (!c->mon || !client_surface(c)->mapped || !c->mon->lt[c->mon->sellt]->arrange)
         return;
     wlr_scene_node_reparent(
             &c->scene->node,
@@ -2901,7 +2907,7 @@ void
 setfullscreen(Client *c, int fullscreen)
 {
     c->isfullscreen = fullscreen;
-    if (!c->mon)
+    if (!c->mon || !client_surface(c)->mapped)
         return;
     c->bw = fullscreen ? 0 : borderpx;
     client_set_fullscreen(c, fullscreen);
@@ -3330,7 +3336,7 @@ tile(Monitor *m)
         return;
 
     if (n > m->nmaster) {
-        master_w = m->nmaster ? ROUND((m->w.width + gappi * e) * m->mfact) : 0;
+        master_w = m->nmaster ? (int)round((m->w.width + gappi * e) * m->mfact) : 0;
     } else {
         master_w = m->w.width - gappo * e;
     }
