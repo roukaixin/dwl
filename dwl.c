@@ -193,6 +193,7 @@ typedef struct {
     } surface;
     struct wlr_xdg_toplevel_decoration_v1 *decoration;
     struct wl_listener commit;
+    struct wl_listener map;
     struct wl_listener maximize;
     struct wl_listener unmap;
     struct wl_listener destroy;
@@ -254,7 +255,6 @@ typedef struct {
     struct wlr_layer_surface_v1 *layer_surface;
 
     struct wl_listener destroy;
-    struct wl_listener map;
     struct wl_listener unmap;
     struct wl_listener surface_commit;
 } LayerSurface;
@@ -385,8 +385,7 @@ static bool bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx, doubl
 
 static void buffer_destroy(struct wlr_buffer *buffer);
 
-static bool
-buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags, void **data, uint32_t *format, size_t *stride);
+static bool buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags, void **data, uint32_t *format, size_t *stride);
 
 static void buffer_end_data_ptr_access(struct wlr_buffer *buffer);
 
@@ -517,8 +516,7 @@ static void monocle(Monitor *m);
 
 static void motionabsolute(struct wl_listener *listener, void *data);
 
-static void motionnotify(uint32_t time, struct wlr_input_device *device,
-                         double dx, double dy, double dx_unaccel, double dy_unaccel);
+static void motionnotify(uint32_t time, struct wlr_input_device *device, double dx, double dy, double dx_unaccel, double dy_unaccel);
 
 static void motionrelative(struct wl_listener *listener, void *data);
 
@@ -616,8 +614,7 @@ static void virtualpointer(struct wl_listener *listener, void *data);
 
 static Monitor *xytomon(double x, double y);
 
-static void xytonode(double x, double y, struct wlr_surface **psurface,
-                     Client **pc, LayerSurface **pl, double *nx, double *ny);
+static void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc, LayerSurface **pl, double *nx, double *ny);
 
 static void zoom(const Arg *arg);
 
@@ -1253,10 +1250,11 @@ commitnotify(struct wl_listener *listener, void *data)
          * a wrong monitor.
          */
         applyrules(c);
-        wlr_surface_set_preferred_buffer_scale(client_surface(c), (int32_t)ceilf(c->mon->wlr_output->scale));
+        wlr_surface_set_preferred_buffer_scale(client_surface(c), (int)ceilf(c->mon->wlr_output->scale));
         wlr_fractional_scale_v1_notify_scale(client_surface(c), c->mon->wlr_output->scale);
         setmon(c, NULL, 0); /* Make sure to reapply rules in mapnotify() */
     }
+
     if (client_surface(c)->mapped && c->mon)
         resize(c, c->geom, (c->isfloating && !c->isfullscreen));
 
@@ -1368,8 +1366,7 @@ createlayersurface(struct wl_listener *listener, void *data)
 
     l = layer_surface->data = ecalloc(1, sizeof(*l));
     l->type = LayerShell;
-    LISTEN(&surface->events.commit, &l->surface_commit,
-           commitlayersurfacenotify);
+    LISTEN(&surface->events.commit, &l->surface_commit, commitlayersurfacenotify);
     LISTEN(&surface->events.unmap, &l->unmap, unmaplayersurfacenotify);
     LISTEN(&layer_surface->events.destroy, &l->destroy,
            destroylayersurfacenotify);
@@ -1388,7 +1385,7 @@ createlayersurface(struct wl_listener *listener, void *data)
     wl_list_insert(&l->mon->layers[layer_surface->pending.layer], &l->link);
     wlr_surface_send_enter(surface, layer_surface->output);
     wlr_fractional_scale_v1_notify_scale(surface, l->mon->wlr_output->scale);
-    wlr_surface_set_preferred_buffer_scale(surface, (int32_t)ceilf(l->mon->wlr_output->scale));
+    wlr_surface_set_preferred_buffer_scale(surface, (int)ceilf(l->mon->wlr_output->scale));
 
     /* Temporarily set the layer's current state to pending
      * so that we can easily arrange it
@@ -2828,6 +2825,7 @@ run(char *startup_cmd)
             die("startup: execl:");
         }
     }
+
 
     /* Mark stdout as non-blocking to avoid people who does not close stdin
      * nor consumes it in their startup script getting dwl frozen */
