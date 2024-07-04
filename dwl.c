@@ -385,8 +385,7 @@ static bool bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx, doubl
 
 static void buffer_destroy(struct wlr_buffer *buffer);
 
-static bool
-buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags, void **data, uint32_t *format, size_t *stride);
+static bool buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags, void **data, uint32_t *format, size_t *stride);
 
 static void buffer_end_data_ptr_access(struct wlr_buffer *buffer);
 
@@ -517,8 +516,7 @@ static void monocle(Monitor *m);
 
 static void motionabsolute(struct wl_listener *listener, void *data);
 
-static void motionnotify(uint32_t time, struct wlr_input_device *device,
-                         double dx, double dy, double dx_unaccel, double dy_unaccel);
+static void motionnotify(uint32_t time, struct wlr_input_device *device, double dx, double dy, double dx_unaccel, double dy_unaccel);
 
 static void motionrelative(struct wl_listener *listener, void *data);
 
@@ -616,8 +614,7 @@ static void virtualpointer(struct wl_listener *listener, void *data);
 
 static Monitor *xytomon(double x, double y);
 
-static void xytonode(double x, double y, struct wlr_surface **psurface,
-                     Client **pc, LayerSurface **pl, double *nx, double *ny);
+static void xytonode(double x, double y, struct wlr_surface **psurface, Client **pc, LayerSurface **pl, double *nx, double *ny);
 
 static void zoom(const Arg *arg);
 
