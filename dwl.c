@@ -3422,10 +3422,10 @@ grid(Monitor *m)
     // n client 数量
     unsigned int i = 0, n = 0;
     // client x
-    unsigned int cx, cy, cw, ch;
+    unsigned int cx, cy, cw = 0, ch = 0;
     unsigned int dx;
     // last_row_cols 最后一行的列数
-    unsigned int cols, rows, last_row_cols;
+    unsigned int cols = 0, rows = 0, last_row_cols = 0;
     Client *c;
 
     // 获取多少个 client
