@@ -1922,7 +1922,7 @@ drawbar(Monitor *m)
             continue;
         w = MIN(TEXTW(m, client_get_title(c)), TEXTW(m, max_title_w));
         if (m->b.width - status_w - x > m->b.height + (int)TEXTW(m, "...")) {
-            drwl_setscheme(m->drw, colors[m == selmon ? SchemeSel : SchemeNorm]);
+            drwl_setscheme(m->drw, colors[focustop(selmon) == c ? SchemeSel : SchemeNorm]);
             drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, client_get_title(c), 0);
             if (c && c->isfloating)
                 drwl_rect(m->drw, x + 2, 2, boxw, boxw, 0, 0);
@@ -3864,8 +3864,7 @@ xytomon(double x, double y)
 }
 
 void
-xytonode(double x, double y, struct wlr_surface **psurface, Client **pc,
-         LayerSurface **pl, double *nx, double *ny)
+xytonode(double x, double y, struct wlr_surface **psurface, Client **pc, LayerSurface **pl, double *nx, double *ny)
 {
     struct wlr_scene_node *node, *pnode;
     struct wlr_surface *surface = NULL;
