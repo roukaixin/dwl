@@ -44,7 +44,7 @@ static int log_level = WLR_ERROR;
 /* Autostart */
 static const char *const autostart[] = {
         "fcitx5", "-d",NULL,
-        "Snipaste", NULL,
+        "snipaste", NULL,
         "udiskie", NULL,
         "nm-applet", NULL,
         "blueman-applet", NULL,

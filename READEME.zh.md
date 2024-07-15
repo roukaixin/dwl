@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `aede3b29`，描述：`Fix applybounds`
+更新最新代码 `bd5001b7`，描述：`prepare CHANGELOG.md for 0.6`
 
 # 安装
 
