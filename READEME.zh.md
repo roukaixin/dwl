@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `bd5001b7`，描述：`prepare CHANGELOG.md for 0.6`
+更新最新代码 `a9bcdff6`，描述：`send scale on initial commit to layer surfaces`
 
 # 安装
 
