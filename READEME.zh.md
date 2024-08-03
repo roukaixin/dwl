@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `a9bcdff6`，描述：`send scale on initial commit to layer surfaces`
+更新最新代码 `cb01023d`，描述：`fix crash when re-mapping a client`
 
 # 安装
 
