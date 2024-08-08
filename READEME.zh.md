@@ -1,6 +1,6 @@
 # dwl 版本
 
-更新最新代码 `cb01023d`，描述：`fix crash when re-mapping a client`
+更新最新代码 `74e45c40`，描述：`bump version to 0.7`
 
 # 安装
 
