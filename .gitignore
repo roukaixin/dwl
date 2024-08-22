@@ -6,3 +6,6 @@ dwl
 
 .idea
 .vscode
+
+build
+cmake-build-debug

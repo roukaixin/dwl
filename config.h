@@ -31,12 +31,12 @@ static uint32_t colors[][3] = {
         [SchemeSelTag]          = { 0xeeeeeeff, 0x333333c0, 0x000000dd },
         [SchemeUnderline]       = { 0x7799AAff, 0,          0 },
         [SchemeStatusText]      = { 0x000000ff, 0x00000088, 0 },
-        [SchemeBarEmpty]        = { 0x33333333,          0x11111111, 0x33333333 },
+        [SchemeBarEmpty]        = { 0x33333333, 0x11111111, 0x33333333 },
         [SchemeUrg]             = { 0,          0,          0x770000ff },
 };
 
 /* tagging - TAGCOUNT must be no greater than 31 */
-static char *tags[] = {"󰎤", "󰎧", "󰎪", "󰎭", "󰎱", "󰎳", "󰎶", "󰎹", "󰎼"};
+static char *tags[] = {"1", "2", "3", "4", "5", "6", "7", "8", "9"};
 
 /* logging */
 static int log_level = WLR_ERROR;
