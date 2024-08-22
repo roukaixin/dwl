@@ -1960,24 +1960,10 @@ drawbar(Monitor *m)
         drwl_rect(m->drw, x, 0, empty_w, m->b.height, 1, 0);
     }
 
-    // if ((w = m->b.width - status_w - x) > m->b.height) {
-    //     if (c) {
-    //         drwl_setscheme(m->drw, colors[m == selmon ? SchemeSel : SchemeNorm]);
-    //         drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, client_get_title(c), 0);
-    //         if (c && c->isfloating)
-    //             drwl_rect(m->drw, x + 2, 2, boxw, boxw, 0, 0);
-    //     } else {
-    //         drwl_setscheme(m->drw, colors[SchemeNorm]);
-    //         drwl_rect(m->drw, x, 0, w, m->b.height, 1, 1);
-    //     }
-    // }
-
     drwl_finish_drawing(m->drw);
     wlr_scene_buffer_set_dest_size(m->scene_buffer, m->b.real_width, m->b.real_height);
-    wlr_scene_node_set_position(
-            &m->scene_buffer->node, m->m.x + sidepad,
-            m->m.y + (topbar ? vertpad : m->m.height - m->b.real_height - vertpad)
-    );
+    wlr_scene_node_set_position(&m->scene_buffer->node, m->m.x + sidepad,
+                                m->m.y + (topbar ? vertpad : m->m.height - m->b.real_height - vertpad));
     wlr_scene_buffer_set_buffer(m->scene_buffer, &buf->base);
     wlr_buffer_drop(&buf->base);
 }
