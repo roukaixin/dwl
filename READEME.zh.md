@@ -1,5 +1,5 @@
 # dwl 版本
-
+0.7 分支
 更新最新代码 `74e45c40`，描述：`bump version to 0.7`
 
 # 安装
@@ -20,13 +20,13 @@ sudo make install
 
 
 # 已打补丁
-- bar
+- bar: 2024-08-23
+- barpadding: 2024-08-23
+- hide_vacant_tags: 2024-08-23
+- pertag
 - attachbottom
 - autostart
-- barpadding
 - setupenv
-- hide_vacant_tags
 - numlock-capslock
-- pertag
 - gaps
 - hide-behind-fullscree

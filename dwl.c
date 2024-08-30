@@ -277,6 +277,14 @@ typedef struct {
     void (*arrange)(Monitor *);
 } Layout;
 
+typedef struct {
+    struct wlr_buffer base;
+    struct wl_listener release;
+    bool busy;
+    Img *image;
+    uint32_t data[];
+} Buffer;
+
 struct Monitor {
     struct wl_list link;
     struct wlr_output *wlr_output;
@@ -322,21 +330,15 @@ struct Monitor {
     float mfact;
     int gamma_lut_changed;
     int nmaster;
-    int showbar;
     /**
      * 布局图标
      */
     char ltsymbol[16];
     int asleep;
     Drwl *drw;
+    Buffer *pool[2];
     int lrpad;
 };
-
-typedef struct {
-    struct wlr_buffer base;
-    size_t stride;
-    uint32_t data[];
-} Buffer;
 
 typedef struct {
     const char *name;
@@ -393,10 +395,13 @@ static void autostartexec(void);
 
 static void axisnotify(struct wl_listener *listener, void *data);
 
-static bool bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx, double *sy);
-static void buffer_destroy(struct wlr_buffer *buffer);
-static bool buffer_begin_data_ptr_access(struct wlr_buffer *buffer, uint32_t flags, void **data, uint32_t *format, size_t *stride);
-static void buffer_end_data_ptr_access(struct wlr_buffer *buffer);
+static bool baracceptsinput(struct wlr_scene_buffer *buffer, double *sx, double *sy);
+static void bufdestroy(struct wlr_buffer *buffer);
+static bool bufdatabegin(struct wlr_buffer *buffer, uint32_t flags,
+                         void **data, uint32_t *format, size_t *stride);
+static void bufdataend(struct wlr_buffer *buffer);
+static Buffer *bufmon(Monitor *m);
+static void bufrelease(struct wl_listener *listener, void *data);
 
 /**
  * 点击按钮
@@ -578,7 +583,7 @@ static void setup(void);
 static void spawn(const Arg *arg);
 
 static void startdrag(struct wl_listener *listener, void *data);
-static int status_in(int fd, unsigned int mask, void *data);
+static int statusin(int fd, unsigned int mask, void *data);
 
 static void tag(const Arg *arg);
 
@@ -621,9 +626,7 @@ static void updatebar(Monitor *m);
 static void updatetitle(struct wl_listener *listener, void *data);
 
 static void urgent(struct wl_listener *listener, void *data);
-
 static void view(const Arg *arg);
-
 static void virtualkeyboard(struct wl_listener *listener, void *data);
 
 static void virtualpointer(struct wl_listener *listener, void *data);
@@ -705,9 +708,9 @@ static char stext[256];
 static struct wl_event_source *status_event_source;
 
 static const struct wlr_buffer_impl buffer_impl = {
-        .destroy = buffer_destroy,
-        .begin_data_ptr_access = buffer_begin_data_ptr_access,
-        .end_data_ptr_access = buffer_end_data_ptr_access
+        .destroy = bufdestroy,
+        .begin_data_ptr_access = bufdatabegin,
+        .end_data_ptr_access = bufdataend,
 };
 
 #ifdef XWAYLAND
@@ -738,7 +741,6 @@ struct Pertag {
     float mfacts[LENGTH(tags) + 1]; /* mfacts per tag */
     unsigned int sellts[LENGTH(tags) + 1]; /* selected layouts */
     const Layout *ltidxs[LENGTH(tags) + 1][2]; /* matrix of tags and layouts indexes  */
-    int showbars[LENGTH(tags) + 1];
 };
 
 /* function implementations */
@@ -977,45 +979,85 @@ axisnotify(struct wl_listener *listener, void *data)
 }
 
 bool
-bar_accepts_input(struct wlr_scene_buffer *buffer, double *sx, double *sy)
+baracceptsinput(struct wlr_scene_buffer *buffer, double *sx, double *sy)
 {
     return true;
 }
 
 void
-buffer_destroy(struct wlr_buffer *wlr_buffer)
+bufdestroy(struct wlr_buffer *wlr_buffer)
 {
-    Buffer *buf;
-    buf = wl_container_of(wlr_buffer, buf, base);
+    Buffer *buf = wl_container_of(wlr_buffer, buf, base);
+    if (buf->busy)
+        wl_list_remove(&buf->release.link);
+    drwl_image_destroy(buf->image);
     free(buf);
 }
 
 bool
-buffer_begin_data_ptr_access(struct wlr_buffer *wlr_buffer, uint32_t flags,
+bufdatabegin(struct wlr_buffer *wlr_buffer, uint32_t flags,
                              void **data, uint32_t *format, size_t *stride)
 {
-    Buffer *buf;
-    buf = wl_container_of(wlr_buffer, buf, base);
+    Buffer *buf = wl_container_of(wlr_buffer, buf, base);
 
     if (flags & WLR_BUFFER_DATA_PTR_ACCESS_WRITE)
         return false;
 
     *data = buf->data;
-    *stride = buf->stride;
+    *stride = wlr_buffer->width * 4;
     *format = DRM_FORMAT_ARGB8888;
 
     return true;
 }
 
 void
-buffer_end_data_ptr_access(struct wlr_buffer *buffer)
+bufdataend(struct wlr_buffer *buffer)
 {
+}
+
+Buffer *
+bufmon(Monitor *m)
+{
+    size_t i;
+    Buffer *buf = NULL;
+
+    for (i = 0; i < LENGTH(m->pool); i++) {
+        if (m->pool[i]) {
+            if (m->pool[i]->busy)
+                continue;
+            buf = m->pool[i];
+            break;
+        }
+
+        buf = ecalloc(1, sizeof(Buffer) + (m->b.width * 4 * m->b.height));
+        buf->image = drwl_image_create(NULL, m->b.width, m->b.height, buf->data);
+        wlr_buffer_init(&buf->base, &buffer_impl, m->b.width, m->b.height);
+        m->pool[i] = buf;
+        break;
+    }
+    if (!buf)
+        return NULL;
+
+    buf->busy = true;
+    LISTEN(&buf->base.events.release, &buf->release, bufrelease);
+    wlr_buffer_lock(&buf->base);
+    drwl_setimage(m->drw, buf->image);
+    return buf;
+}
+
+void
+bufrelease(struct wl_listener *listener, void *data)
+{
+    Buffer *buf = wl_container_of(listener, buf, release);
+    buf->busy = false;
+    wl_list_remove(&buf->release.link);
 }
 
 void
 buttonpress(struct wl_listener *listener, void *data)
 {
     unsigned int i = 0, x = 0, occ = 0;
+    double cx;
     unsigned int click;
     struct wlr_pointer_button_event *event = data;
     struct wlr_keyboard *keyboard;
@@ -1033,39 +1075,37 @@ buttonpress(struct wl_listener *listener, void *data)
     if (c)
         click = ClkClient;
 
-    if (!c && !exclusive_focus &&
-            (node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
-            (buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer) {
-        cursor->x *= selmon->wlr_output->scale;
-        cursor->y *= selmon->wlr_output->scale;
-        x = selmon->m.x;
-        wl_list_for_each(c, &clients, link) {
-            if (c->mon != selmon)
-                continue;
-            occ |= c->tags == TAGMASK ? 0 : c->tags;
-        }
-        do {
-            if (!(occ & 1 << i || selmon->tagset[selmon->seltags] & 1 << i))
-                continue;
-            x += TEXTW(selmon, tags[i]);
-        } while (cursor->x >= x && ++i < LENGTH(tags));
-        if (i < LENGTH(tags)) {
-            click = ClkTagBar;
-            arg.ui = 1 << i;
-        } else if (cursor->x < x + TEXTW(selmon, selmon->ltsymbol))
-            click = ClkLtSymbol;
-        else if (cursor->x > selmon->w.width - (int) TEXTW(selmon, stext))
-            click = ClkStatus;
-        else
-            click = ClkTitle;
-    }
-
     switch (event->state) {
         case WL_POINTER_BUTTON_STATE_PRESSED:
             cursor_mode = CurPressed;
             selmon = xytomon(cursor->x, cursor->y);
             if (locked)
                 break;
+
+            if (!c && !exclusive_focus &&
+                (node = wlr_scene_node_at(&layers[LyrBottom]->node, cursor->x, cursor->y, NULL, NULL)) &&
+                (buffer = wlr_scene_buffer_from_node(node)) && buffer == selmon->scene_buffer) {
+                cx = (cursor->x - selmon->m.x) * selmon->wlr_output->scale;
+                wl_list_for_each(c, &clients, link) {
+                    if (c->mon != selmon)
+                        continue;
+                    occ |= c->tags == TAGMASK ? 0 : c->tags;
+                }
+                do {
+                    if (!(occ & 1 << i || selmon->tagset[selmon->seltags] & 1 << i))
+                        continue;
+                    x += TEXTW(selmon, tags[i]);
+                } while (cx >= x && ++i < LENGTH(tags));
+                if (i < LENGTH(tags)) {
+                    click = ClkTagBar;
+                    arg.ui = 1 << i;
+                } else if (cx < x + TEXTW(selmon, selmon->ltsymbol))
+                    click = ClkLtSymbol;
+                else if (cx > selmon->b.width - (TEXTW(selmon, stext) - selmon->lrpad + 2)) {
+                    click = ClkStatus;
+                } else
+                    click = ClkTitle;
+            }
 
             /* Change focus if the button was _pressed_ over a client */
             xytonode(cursor->x, cursor->y, NULL, &c, NULL, NULL, NULL);
@@ -1181,6 +1221,10 @@ cleanupmon(struct wl_listener *listener, void *data)
         wl_list_for_each_safe(l, tmp, &m->layers[i], link)wlr_layer_surface_v1_destroy(l->layer_surface);
     }
 
+    for (i = 0; i < LENGTH(m->pool); i++)
+        wlr_buffer_drop(&m->pool[i]->base);
+
+    drwl_setimage(m->drw, NULL);
     // 销毁 fcft
     drwl_destroy(m->drw);
 
@@ -1525,7 +1569,7 @@ createmon(struct wl_listener *listener, void *data)
         die("failed to create drwl context");
 
     m->scene_buffer = wlr_scene_buffer_create(layers[LyrBottom], NULL);
-    m->scene_buffer->point_accepts_input = bar_accepts_input;
+    m->scene_buffer->point_accepts_input = baracceptsinput;
     updatebar(m);
 
     wl_list_insert(&mons, &m->link);
@@ -1541,7 +1585,6 @@ createmon(struct wl_listener *listener, void *data)
         m->pertag->ltidxs[i][0] = m->lt[0];
         m->pertag->ltidxs[i][1] = m->lt[1];
         m->pertag->sellts[i] = m->sellt;
-        m->pertag->showbars[i] = m->showbar;
     }
 
     /* The xdg-protocol specifies:
@@ -1871,7 +1914,6 @@ drawbar(Monitor *m)
     int x, w, status_w = 0, empty_w;
     int boxw = 2;
     uint32_t i, occ = 0, urg = 0;
-    int32_t stride, size;
     Client *c;
     Buffer *buf;
     char max_title_w[254];
@@ -1879,16 +1921,8 @@ drawbar(Monitor *m)
     // 显示屏不存在或者不显示 bar，直接退出
     if (!m->scene_buffer->node.enabled)
         return;
-
-    stride = drwl_stride(m->b.width);
-    size = stride * m->b.height;
-
-    // 分配 bar 内存
-    buf = ecalloc(1, sizeof(Buffer) + size);
-    buf->stride = stride;
-    wlr_buffer_init(&buf->base, &buffer_impl, m->b.width, m->b.height);
-
-    drwl_prepare_drawing(m->drw, m->b.width, m->b.height, buf->data, stride);
+    if (!(buf = bufmon(m)))
+        return;
 
     /* draw status first so it can be overdrawn by tags later */
     if (m == selmon) {  /* status is only drawn on selected monitor */
@@ -1918,6 +1952,7 @@ drawbar(Monitor *m)
         drwl_setscheme(m->drw, colors[m->tagset[m->seltags] & 1 << i ? SchemeSelTag : SchemeNormTag]);
         drwl_text(m->drw, x, 0, w, m->b.height, m->lrpad / 2, tags[i], (int) urg & 1 << i);
 
+        // 绘制 tag 选中下划线
         if (m->tagset[m->seltags] & 1 << i) {
             drwl_setscheme(m->drw, colors[SchemeUnderline]);
             drwl_rect(
@@ -1961,12 +1996,11 @@ drawbar(Monitor *m)
         drwl_rect(m->drw, x, 0, empty_w, m->b.height, 1, 0);
     }
 
-    drwl_finish_drawing(m->drw);
     wlr_scene_buffer_set_dest_size(m->scene_buffer, m->b.real_width, m->b.real_height);
     wlr_scene_node_set_position(&m->scene_buffer->node, m->m.x + sidepad,
                                 m->m.y + (topbar ? vertpad : m->m.height - m->b.real_height - vertpad));
     wlr_scene_buffer_set_buffer(m->scene_buffer, &buf->base);
-    wlr_buffer_drop(&buf->base);
+    wlr_buffer_unlock(&buf->base);
 }
 
 
@@ -2989,7 +3023,7 @@ setlayout(const Arg *arg)
     if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
         selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag] ^= 1;
     if (arg && arg->v)
-        selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = (Layout *) arg->v;
+        selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt] = (Layout *)arg->v;
     strncpy(selmon->ltsymbol, selmon->lt[selmon->sellt]->symbol, LENGTH(selmon->ltsymbol));
     arrange(selmon);
     drawbar(selmon);
@@ -3285,7 +3319,7 @@ setup(void)
         wl_display_get_event_loop(dpy),
         STDIN_FILENO,
         WL_EVENT_READABLE,
-        status_in,
+        statusin,
         NULL
     );
 
@@ -3334,7 +3368,7 @@ startdrag(struct wl_listener *listener, void *data)
 }
 
 int
-status_in(int fd, unsigned int mask, void *data)
+statusin(int fd, unsigned int mask, void *data)
 {
     char status[1024];
     ssize_t n;
@@ -3537,22 +3571,8 @@ void
 togglefullscreen(const Arg *arg)
 {
     Client *sel = focustop(selmon);
-    Monitor *mon;
-    int oldshowbar, showbars;
-    if (sel == NULL) {
-        return;
-    }
-    mon = sel->mon;
-    setfullscreen(sel, !sel->isfullscreen);
-    oldshowbar = mon->pertag->oldshowbars[mon->pertag->curtag];
-    mon->showbar = mon->pertag->showbars[mon->pertag->curtag];
-    if (!oldshowbar) {
-        showbars = mon->pertag->showbars[mon->pertag->curtag] = !sel->isfullscreen;
-        wlr_scene_node_set_enabled(&selmon->scene_buffer->node, showbars);
-        mon->showbar = showbars;
-        drawbar(mon);
-    }
-    arrangelayers(mon);
+    if (sel)
+        setfullscreen(sel, !sel->isfullscreen);
 }
 
 void
@@ -3577,7 +3597,7 @@ toggleview(const Arg *arg)
     if (!(newtagset = selmon ? selmon->tagset[selmon->seltags] ^ (arg->ui & TAGMASK) : 0))
         return;
 
-    if (newtagset == TAGMASK) {
+    if (newtagset == (uint32_t)~0) {
         selmon->pertag->prevtag = selmon->pertag->curtag;
         selmon->pertag->curtag = 0;
     }
@@ -3595,7 +3615,6 @@ toggleview(const Arg *arg)
     selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
     selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
     selmon->lt[selmon->sellt ^ 1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt ^ 1];
-    selmon->showbar = selmon->pertag->showbars[selmon->pertag->curtag];
 
     selmon->tagset[selmon->seltags] = newtagset;
     focusclient(focustop(selmon), 1);
@@ -3768,15 +3787,22 @@ updatemons(struct wl_listener *listener, void *data)
 void
 updatebar(Monitor *m)
 {
+    size_t i;
     int rw, rh;
     char fontattrs[12];
 
     // 获取输出设备的当前有效（或实际）分辨率。
     wlr_output_transformed_resolution(m->wlr_output, &rw, &rh);
-    m->b.width = rw - 2 * sidepad;
-    m->b.real_width = (int) ((float) m->b.width / m->wlr_output->scale);
+    m->b.width = rw - (2 * sidepad);
+    m->b.real_width = (int)((float)rw / m->wlr_output->scale) - (2 * sidepad);
 
     wlr_scene_node_set_enabled(&m->scene_buffer->node, m->wlr_output->enabled ? showbar : 0);
+
+    for (i = 0; i < LENGTH(m->pool); i++)
+        if (m->pool[i]) {
+            wlr_buffer_drop(&m->pool[i]->base);
+            m->pool[i] = NULL;
+        }
 
     if (m->b.scale == m->wlr_output->scale && m->drw)
         return;
@@ -3824,7 +3850,7 @@ view(const Arg *arg)
     if (!selmon || (arg->ui & TAGMASK) == selmon->tagset[selmon->seltags])
         return;
     selmon->seltags ^= 1; /* toggle sel tagset */
-    if (arg->ui & TAGMASK) {
+    if (arg->ui & ~0) {
         selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
         selmon->pertag->prevtag = selmon->pertag->curtag;
 
@@ -3845,12 +3871,7 @@ view(const Arg *arg)
     selmon->sellt = selmon->pertag->sellts[selmon->pertag->curtag];
     selmon->lt[selmon->sellt] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt];
     selmon->lt[selmon->sellt ^ 1] = selmon->pertag->ltidxs[selmon->pertag->curtag][selmon->sellt ^ 1];
-    selmon->showbar = selmon->pertag->showbars[selmon->pertag->curtag];
 
-    wlr_scene_node_set_enabled(&selmon->scene_buffer->node, selmon->showbar);
-    if (selmon->showbar) {
-        selmon->w.y = selmon->b.real_height + vertpad;
-    }
     focusclient(focustop(selmon), 1);
     arrange(selmon);
     drawbar(selmon);

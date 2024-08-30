@@ -36,9 +36,10 @@
 enum { ColFg, ColBg, ColBorder }; /* colorscheme index */
 
 typedef struct fcft_font Fnt;
+typedef pixman_image_t Img;
 
 typedef struct {
-    pixman_image_t *pix;
+    Img *image;
     Fnt *font;
     uint32_t *scheme;
 } Drwl;
@@ -100,6 +101,13 @@ drwl_setfont(Drwl *drwl, Fnt *font)
 		drwl->font = font;
 }
 
+static void
+drwl_setimage(Drwl *drwl, Img *image)
+{
+    if (drwl)
+        drwl->image = image;
+}
+
 static Fnt *
 drwl_font_create(Drwl *drwl, size_t count,
                  const char *names[static count], const char *attributes)
@@ -134,26 +142,23 @@ drwl_setscheme(Drwl *drwl, uint32_t *scm)
 		drwl->scheme = scm;
 }
 
-static inline int
-drwl_stride(unsigned int width)
+static Img *
+drwl_image_create(Drwl *drwl, unsigned int w, unsigned int h, uint32_t *bits)
 {
-    return (((PIXMAN_FORMAT_BPP(PIXMAN_a8r8g8b8) * width + 7) / 8 + 4 - 1) & -4);
-}
+    Img *image;
+    pixman_region32_t clip;
 
-static void
-drwl_prepare_drawing(Drwl *drwl, unsigned int w, unsigned int h,
-                     uint32_t *bits, int stride)
-{
-	pixman_region32_t clip;
-
-	if (!drwl)
-		return;
-
-    drwl->pix = pixman_image_create_bits_no_clear(
-            PIXMAN_a8r8g8b8, w, h, bits, stride);
+    image = pixman_image_create_bits_no_clear(
+            PIXMAN_a8r8g8b8, w, h, bits, w * 4);
+    if (!image)
+        return NULL;
     pixman_region32_init_rect(&clip, 0, 0, w, h);
-    pixman_image_set_clip_region32(drwl->pix, &clip);
+    pixman_image_set_clip_region32(image, &clip);
     pixman_region32_fini(&clip);
+
+    if (drwl)
+        drwl_setimage(drwl, image);
+    return image;
 }
 
 static void
@@ -162,15 +167,15 @@ drwl_rect(Drwl *drwl,
           int filled, int invert)
 {
 	pixman_color_t clr;
-	if (!drwl || !drwl->scheme || !drwl->pix)
+    if (!drwl || !drwl->scheme || !drwl->image)
 		return;
 
 	clr = convert_color(drwl->scheme[invert ? ColBg : ColFg]);
 	if (filled)
-        pixman_image_fill_rectangles(PIXMAN_OP_SRC, drwl->pix, &clr, 1,
+        pixman_image_fill_rectangles(PIXMAN_OP_SRC, drwl->image, &clr, 1,
                                      &(pixman_rectangle16_t) { x, y, w, h });
 	else
-		pixman_image_fill_rectangles(PIXMAN_OP_SRC, drwl->pix, &clr, 4,
+        pixman_image_fill_rectangles(PIXMAN_OP_SRC, drwl->image, &clr, 4,
 			(pixman_rectangle16_t[4]) {
 				{ x,         y,         w, 1 },
 				{ x,         y + h - 1, w, 1 },
@@ -193,7 +198,7 @@ drwl_text(Drwl *drwl,
     const struct fcft_glyph *glyph, *eg = NULL;
     int fcft_subpixel_mode = FCFT_SUBPIXEL_DEFAULT;
 
-    if (!drwl || (render && (!drwl->scheme || !w || !drwl->pix)) || !text || !drwl->font)
+    if (!drwl || (render && (!drwl->scheme || !w || !drwl->image)) || !text || !drwl->font)
 		return 0;
 
 	if (!render) {
@@ -242,7 +247,7 @@ drwl_text(Drwl *drwl,
             } else {
                 w -= eg->advance.x;
                 pixman_image_composite32(
-                        PIXMAN_OP_OVER, fg_pix, eg->pix, drwl->pix, 0, 0, 0, 0,
+                        PIXMAN_OP_OVER, fg_pix, eg->pix, drwl->image, 0, 0, 0, 0,
                         x + eg->x, ty - eg->y, eg->width, eg->height
                 );
             }
@@ -256,11 +261,11 @@ drwl_text(Drwl *drwl,
         if (render && pixman_image_get_format(glyph->pix) == PIXMAN_a8r8g8b8)
             /* pre-rendered glyphs (eg. emoji) */
             pixman_image_composite32(
-                    PIXMAN_OP_OVER, glyph->pix, NULL, drwl->pix, 0, 0, 0, 0,
+                    PIXMAN_OP_OVER, glyph->pix, NULL, drwl->image, 0, 0, 0, 0,
                     x + glyph->x, ty - glyph->y, glyph->width, glyph->height);
         else if (render)
             pixman_image_composite32(
-                    PIXMAN_OP_OVER, fg_pix, glyph->pix, drwl->pix, 0, 0, 0, 0,
+                    PIXMAN_OP_OVER, fg_pix, glyph->pix, drwl->image, 0, 0, 0, 0,
                     x + glyph->x, ty - glyph->y, glyph->width, glyph->height);
 
         x += glyph->advance.x;
@@ -282,13 +287,9 @@ drwl_font_getwidth(Drwl *drwl, const char *text)
 }
 
 static void
-drwl_finish_drawing(Drwl *drwl)
+drwl_image_destroy(Img *image)
 {
-    if (!drwl)
-        return;
-    if (drwl->pix)
-        pixman_image_unref(drwl->pix);
-    drwl->pix = NULL;
+    pixman_image_unref(image);
 }
 
 static void
@@ -296,6 +297,8 @@ drwl_destroy(Drwl *drwl)
 {
     if (drwl->font)
         drwl_font_destroy(drwl->font);
+    if (drwl->image)
+        drwl_image_destroy(drwl->image);
     free(drwl);
 }
 
