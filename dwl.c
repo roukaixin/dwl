@@ -739,7 +739,6 @@ struct Pertag {
     unsigned int sellts[LENGTH(tags) + 1]; /* selected layouts */
     const Layout *ltidxs[LENGTH(tags) + 1][2]; /* matrix of tags and layouts indexes  */
     int showbars[LENGTH(tags) + 1];
-    int oldshowbars[LENGTH(tags) + 1];
 };
 
 /* function implementations */
@@ -1285,8 +1284,10 @@ commitnotify(struct wl_listener *listener, void *data)
          * a wrong monitor.
          */
         applyrules(c);
-        wlr_surface_set_preferred_buffer_scale(client_surface(c), (int)ceilf(c->mon->wlr_output->scale));
-        wlr_fractional_scale_v1_notify_scale(client_surface(c), c->mon->wlr_output->scale);
+        if (c->mon) {
+            wlr_surface_set_preferred_buffer_scale(client_surface(c), (int)ceilf(c->mon->wlr_output->scale));
+            wlr_fractional_scale_v1_notify_scale(client_surface(c), c->mon->wlr_output->scale);
+        }
         setmon(c, NULL, 0); /* Make sure to reapply rules in mapnotify() */
 
         wlr_xdg_toplevel_set_wm_capabilities(c->surface.xdg->toplevel, WLR_XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN);
@@ -1536,11 +1537,11 @@ createmon(struct wl_listener *listener, void *data)
     for (i = 0; i <= LENGTH(tags); i++) {
         m->pertag->nmasters[i] = m->nmaster;
         m->pertag->mfacts[i] = m->mfact;
+
         m->pertag->ltidxs[i][0] = m->lt[0];
         m->pertag->ltidxs[i][1] = m->lt[1];
         m->pertag->sellts[i] = m->sellt;
         m->pertag->showbars[i] = m->showbar;
-        m->pertag->oldshowbars[i] = !m->showbar;
     }
 
     /* The xdg-protocol specifies:
